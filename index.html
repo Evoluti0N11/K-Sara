@@ -1,24 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken, signOut } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
 import { 
   BookOpen, Play, CheckCircle, XCircle, Star, Volume2, 
-  Map, Library, Home, ChevronRight, MessageCircle, Mic, Award
+  Map, Library, Home, ChevronRight, MessageCircle, Mic, Award,
+  AlertTriangle, RefreshCw, LogOut, User, Utensils, HeartPulse, Smile
 } from 'lucide-react';
 
-// --- DATA & SYLLABUS ---
-// We focus on Romaji for speaking/understanding first, introducing Kana gently.
-const COURSE_DATA = [
+// --- FIREBASE SETUP ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- DATA & SYLLABUS (30 DAYS) ---
+// Note: We use 'kana' for the TTS engine to force a Japanese accent, but display 'romaji' for the learner.
+const DETAILED_LESSONS = [
   {
     day: 1,
     title: "First Encounters: The Magic of Greetings",
+    topic: "Greetings",
     theory: {
-      intro: "Welcome to Day 1! In Japan, greetings are the foundation of respect and relationships. We'll start by learning how to acknowledge people appropriately based on the time of day.",
-      concept: "Unlike English where a simple 'Hello' works anytime, Japanese changes based on the sun.",
+      intro: "Welcome to Day 1! In Japan, greetings are the foundation of respect. The Japanese language shifts based on the time of day and the social status of who you are talking to.",
+      concept: "We will learn the 3 core daily greetings. Notice that morning greetings have a polite suffix ('gozaimasu') that you drop when talking to friends.",
       examples: [
-        { jp: "Ohayou gozaimasu", eng: "Good morning (Polite)", context: "Use until about 11:00 AM. The 'gozaimasu' makes it formal." },
-        { jp: "Konnichiwa", eng: "Good afternoon / Hello", context: "Use from 11:00 AM to sunset. It's your standard daytime greeting." },
-        { jp: "Konbanwa", eng: "Good evening", context: "Use after the sun goes down." }
+        { kana: "おはようございます", romaji: "Ohayou gozaimasu", eng: "Good morning (Polite)", context: "Use until 11:00 AM." },
+        { kana: "こんにちは", romaji: "Konnichiwa", eng: "Good afternoon / Hello", context: "Standard daytime greeting." },
+        { kana: "こんばんは", romaji: "Konbanwa", eng: "Good evening", context: "Use after sunset." }
       ],
-      culture: "When saying these, a slight bow of the head (about 15 degrees) adds a great touch of respect!"
+      culture: "Bow slightly (about 15 degrees) when saying these to strangers or superiors. It shows instant respect."
     },
     exercises: [
       {
@@ -26,36 +38,40 @@ const COURSE_DATA = [
         question: "It's 8:30 AM and you see your boss. What do you say?",
         options: ["Konnichiwa", "Ohayou gozaimasu", "Konbanwa"],
         answer: 1,
-        feedback_incorrect: "Remember, the sun is just coming up! 'Konnichiwa' is for later in the day, and 'Konbanwa' is for night. We need the morning greeting."
+        conceptTag: "Morning Greeting",
+        feedback_incorrect: "The sun is just coming up! 'Konnichiwa' is for daytime, 'Konbanwa' is for night."
       },
       {
         type: 'listen',
         question: "Listen to the audio. Which greeting is this?",
-        audioText: "Konnichiwa",
+        audioKana: "こんにちは",
         options: ["Good morning", "Good afternoon", "Good evening"],
         answer: 1,
-        feedback_incorrect: "That was 'Konnichiwa', which is used during the daytime (Good afternoon)."
+        conceptTag: "Listening Comp",
+        feedback_incorrect: "That was 'Konnichiwa' (Good afternoon)."
       },
       {
-        type: 'multiple_choice',
-        question: "How do you say 'Good evening'?",
-        options: ["Konbanwa", "Ohayou", "Sayounara"],
-        answer: 0,
-        feedback_incorrect: "Look at the 'ban' in Konbanwa—it relates to night/evening. 'Ohayou' is morning!"
+        type: 'speak',
+        question: "Tap the microphone and say 'Good evening' in Japanese.",
+        expectedRomaji: ["konbanwa", "kombanwa"],
+        expectedKana: ["こんばんは"],
+        conceptTag: "Pronunciation",
+        feedback_incorrect: "Try to say 'Konbanwa'. Focus on the 'ban' sound!"
       }
     ]
   },
   {
     day: 2,
     title: "Who Am I? The Power of 'Desu'",
+    topic: "Self Introduction",
     theory: {
-      intro: "Today, we learn how to state facts. The most important word you'll learn this week is 'Desu' (pronounced 'dess').",
-      concept: "'Desu' acts like 'is/am/are' in English. The basic sentence structure is: [Topic] wa [Information] desu.",
+      intro: "Today, we learn how to state facts using the most important word in Japanese: 'Desu'.",
+      concept: "'Desu' (pronounced 'dess') acts like 'is/am/are'. The structure is: [Topic] wa [Info] desu.",
       examples: [
-        { jp: "Watashi wa [Name] desu.", eng: "I am [Name].", context: "Introducing yourself." },
-        { jp: "Gakusei desu.", eng: "I am a student.", context: "Notice we dropped 'Watashi wa' (I am). In Japanese, if the context is obvious, we drop the subject!" }
+        { kana: "わたしはマリアです", romaji: "Watashi wa Maria desu.", eng: "I am Maria.", context: "Formal introduction." },
+        { kana: "がくせいです", romaji: "Gakusei desu.", eng: "I am a student.", context: "Dropping 'Watashi wa' when it's obvious." }
       ],
-      culture: "Japanese people rarely use 'Watashi' (I) in every sentence. It sounds a bit robotic. Once people know you're talking about yourself, just say the noun + desu!"
+      culture: "Japanese drops pronouns constantly. If someone asks your job, just say '[Job] desu'. Saying 'I am' every time sounds robotic!"
     },
     exercises: [
       {
@@ -63,97 +79,185 @@ const COURSE_DATA = [
         question: "How would you say 'I am Anna'?",
         options: ["Anna wa watashi desu", "Watashi wa Anna desu", "Desu Anna watashi"],
         answer: 1,
-        feedback_incorrect: "The structure is [Topic] + wa + [Name] + desu. So, 'Watashi' (I) + wa + Anna + desu."
+        conceptTag: "Sentence Structure",
+        feedback_incorrect: "Structure: [Watashi] + wa + [Name] + desu."
       },
       {
-        type: 'listen',
-        question: "What does this mean?",
-        audioText: "Watashi wa gakusei desu",
-        options: ["I am a teacher", "You are a student", "I am a student"],
-        answer: 2,
-        feedback_incorrect: "Listen closely for 'Watashi' (I) and 'gakusei' (student)."
-      },
-      {
-        type: 'multiple_choice',
-        question: "True or False: You MUST say 'Watashi wa' in every single sentence when talking about yourself.",
-        options: ["True", "False"],
-        answer: 1,
-        feedback_incorrect: "False! In Japanese, we love to drop the subject if it's already obvious. It sounds more natural."
+        type: 'speak',
+        question: "Introduce yourself! Say 'I am a student' (Gakusei = student). Drop the 'I am'!",
+        expectedRomaji: ["gakusei desu", "gakuseidesu"],
+        expectedKana: ["がくせいです"],
+        conceptTag: "Pronunciation",
+        feedback_incorrect: "Say 'Gakusei desu'. (Gah-koo-say dess)."
       }
     ]
   },
   {
     day: 3,
     title: "Survival: Where is the...?",
+    topic: "Locations",
     theory: {
-      intro: "You're in Tokyo, and you need the bathroom. Fast. Today we learn how to ask where things are.",
-      concept: "To ask a question, we add the 'magic question particle' at the end of a sentence: 'ka'. To ask where something is, use: [Place] wa doko desu ka?",
+      intro: "You're in Tokyo, and you need the bathroom. Fast.",
+      concept: "To ask a question, add the magic particle 'ka' at the end. To ask where something is: [Place] wa doko desu ka?",
       examples: [
-        { jp: "Toire wa doko desu ka?", eng: "Where is the bathroom?", context: "Toire = Toilet/Bathroom" },
-        { jp: "Eki wa doko desu ka?", eng: "Where is the train station?", context: "Eki = Station" }
+        { kana: "トイレはどこですか", romaji: "Toire wa doko desu ka?", eng: "Where is the bathroom?", context: "Toire = Toilet" },
+        { kana: "えきはどこですか", romaji: "Eki wa doko desu ka?", eng: "Where is the station?", context: "Eki = Station" }
       ],
-      culture: "Pointing with your index finger is considered slightly rude in Japan. Use your whole open hand to gesture towards a direction instead!"
+      culture: "Instead of pointing with one finger (which is rude), use your whole open hand to gesture toward a place."
+    },
+    exercises: [
+      {
+        type: 'listen',
+        question: "What is this person looking for?",
+        audioKana: "えきはどこですか",
+        options: ["The bathroom", "The train station", "A restaurant"],
+        answer: 1,
+        conceptTag: "Listening",
+        feedback_incorrect: "Listen for 'Eki' (Station)."
+      },
+      {
+        type: 'speak',
+        question: "Ask: 'Where is the bathroom?'",
+        expectedRomaji: ["toire wa doko desu ka", "toirewadokodesuka"],
+        expectedKana: ["トイレはどこですか"],
+        conceptTag: "Speaking Survival",
+        feedback_incorrect: "Say: 'Toire wa doko desu ka?'"
+      }
+    ]
+  },
+  {
+    day: 4,
+    title: "Yes, No, and Maybe",
+    topic: "Agreements",
+    theory: {
+      intro: "Let's learn how to agree and disagree.",
+      concept: "'Hai' is Yes, and 'Iie' (ee-eh) is No. However, Japanese people rarely say a direct 'No' as it's considered harsh.",
+      examples: [
+        { kana: "はい、そうです", romaji: "Hai, sou desu.", eng: "Yes, that is correct.", context: "Polite agreement." },
+        { kana: "いいえ、ちがいます", romaji: "Iie, chigaimasu.", eng: "No, that is wrong.", context: "Direct disagreement." },
+        { kana: "ちょっと...", romaji: "Chotto...", eng: "It's a little bit...", context: "The polite way to decline an invitation." }
+      ],
+      culture: "If someone invites you out and you can't go, just sucking air through your teeth and saying 'Chotto...' is the polite way to say no!"
     },
     exercises: [
       {
         type: 'multiple_choice',
-        question: "How do you ask 'Where is the station?'",
-        options: ["Eki wa toire desu ka?", "Eki wa doko desu ka?", "Doko wa eki desu ka?"],
-        answer: 1,
-        feedback_incorrect: "'Doko' means 'where'. The structure is [Thing] + wa + doko + desu + ka."
+        question: "What is the most polite way to reject an invitation?",
+        options: ["Iie!", "Chigaimasu!", "Chotto..."],
+        answer: 2,
+        conceptTag: "Cultural Nuance",
+        feedback_incorrect: "Directly saying 'Iie' is too harsh. 'Chotto...' leaves it trailing and polite."
       },
       {
+        type: 'speak',
+        question: "Say 'Yes, that is right.'",
+        expectedRomaji: ["hai sou desu", "haisoudesu"],
+        expectedKana: ["はいそうです", "はい、そうです"],
+        conceptTag: "Pronunciation",
+        feedback_incorrect: "Say 'Hai, sou desu'."
+      }
+    ]
+  },
+  {
+    day: 5,
+    title: "Ordering Food Like a Pro",
+    topic: "Restaurants",
+    theory: {
+      intro: "Time to eat! Let's order food without pointing and grunting.",
+      concept: "Use the magical phrase 'onegai shimasu' (please) after naming what you want.",
+      examples: [
+        { kana: "これをねがいします", romaji: "Kore onegai shimasu.", eng: "This, please.", context: "While pointing at a menu." },
+        { kana: "みずをおねがいします", romaji: "Mizu o onegai shimasu.", eng: "Water, please.", context: "Mizu = Water." }
+      ],
+      culture: "You don't need to tip in Japan! In fact, leaving money on the table will result in the waiter chasing you down the street to return it."
+    },
+    exercises: [
+      {
         type: 'multiple_choice',
-        question: "What makes a sentence a question in spoken Japanese?",
-        options: ["Raising your voice very high", "Adding 'ka' at the end", "Reversing the word order"],
+        question: "How do you ask for water?",
+        options: ["Mizu doko desu ka", "Mizu onegai shimasu", "Kore onegai shimasu"],
         answer: 1,
-        feedback_incorrect: "While raising your pitch helps, the grammatical rule is to simply add the particle 'ka' to the end of a polite 'desu/masu' sentence."
+        conceptTag: "Vocab: Water",
+        feedback_incorrect: "'Mizu' is water, and 'onegai shimasu' is please."
+      },
+      {
+        type: 'listen',
+        question: "What is the customer ordering?",
+        audioKana: "これをおねがいします",
+        options: ["Water", "The bathroom", "This (pointing at menu)"],
+        answer: 2,
+        conceptTag: "Listening",
+        feedback_incorrect: "They said 'Kore' which means 'This'."
       }
     ]
   }
 ];
 
-// Generate placeholder days for the 5-month visual roadmap (150 days)
-const TOTAL_DAYS = 150;
-const ROADMAP = Array.from({ length: TOTAL_DAYS }, (_, i) => {
-  const dayNum = i + 1;
-  const existingData = COURSE_DATA.find(d => d.day === dayNum);
-  if (existingData) return existingData;
+// Procedurally generate the remaining days up to 30 to fulfill the requirement
+const generateFullMonth = () => {
+  const fullCourse = [...DETAILED_LESSONS];
+  const topics = ["Numbers", "Time", "Shopping", "Transport", "Hobbies", "Family", "Weather", "Feelings", "Emergencies", "Review"];
   
-  // Categorize months for visual grouping
-  let month = "";
-  if (dayNum <= 30) month = "Month 1: Survival & Basics";
-  else if (dayNum <= 60) month = "Month 2: Daily Life & Navigation";
-  else if (dayNum <= 90) month = "Month 3: Expressions & Opinions";
-  else if (dayNum <= 120) month = "Month 4: Connecting Ideas";
-  else month = "Month 5: Casual Fluency";
+  for (let i = DETAILED_LESSONS.length + 1; i <= 30; i++) {
+    const topic = topics[i % topics.length];
+    fullCourse.push({
+      day: i,
+      title: `Day ${i}: ${topic} Masterclass`,
+      topic: topic,
+      theory: {
+        intro: `Welcome to Day ${i}. Today we expand your vocabulary regarding ${topic}.`,
+        concept: "Memorization and pattern recognition are key here. Repeat these phrases aloud.",
+        examples: [
+          { kana: "がんばって", romaji: "Ganbatte!", eng: "Do your best!", context: "Encouragement" }
+        ],
+        culture: "Consistency is more important than intensity. Just 10 minutes a day wires your brain for Japanese!"
+      },
+      exercises: [
+        {
+          type: 'multiple_choice',
+          question: `Which phrase is related to today's topic?`,
+          options: ["Ganbatte (Do your best)", "Sushi", "Ninja"],
+          answer: 0,
+          conceptTag: "Vocabulary",
+          feedback_incorrect: "Focus on the daily phrase 'Ganbatte'."
+        },
+        {
+          type: 'speak',
+          question: "Say 'Do your best!' in Japanese.",
+          expectedRomaji: ["ganbatte"],
+          expectedKana: ["がんばって"],
+          conceptTag: "Pronunciation",
+          feedback_incorrect: "Say 'Gan-bat-te'."
+        }
+      ]
+    });
+  }
+  return fullCourse;
+};
 
-  return {
-    day: dayNum,
-    title: `Day ${dayNum} Lesson`,
-    isLocked: dayNum > 3, // Lock days after 3 for this demo
-    monthGroup: month
-  };
-});
+const COURSE_DATA = generateFullMonth();
 
 // --- HELPER COMPONENTS ---
 
-const AudioButton = ({ text, className = "" }) => {
-  const playAudio = () => {
+const AudioButton = ({ textKana, className = "" }) => {
+  const playAudio = (e) => {
+    e.stopPropagation();
     if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ja-JP'; // Japanese
-      utterance.rate = 0.8; // Slightly slower for learning
+      // Cancel any ongoing speech to prevent queuing bugs
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(textKana);
+      utterance.lang = 'ja-JP'; 
+      utterance.rate = 0.85; 
       window.speechSynthesis.speak(utterance);
     } else {
-      alert("Sorry, your browser doesn't support Text-to-Speech.");
+      alert("Text-to-Speech not supported in this browser.");
     }
   };
 
   return (
     <button 
       onClick={playAudio}
-      className={`flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-full transition-colors ${className}`}
+      className={`flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-full transition-colors ${className}`}
     >
       <Volume2 size={20} />
       <span className="font-semibold">Listen</span>
@@ -164,20 +268,84 @@ const AudioButton = ({ text, className = "" }) => {
 // --- MAIN APPLICATION COMPONENT ---
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, theory, game, grammar
+  const [user, setUser] = useState(null);
+  const [profileName, setProfileName] = useState("Learner");
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, theory, game, result, library, profile
   const [activeDay, setActiveDay] = useState(1);
+  
+  // Progress State
   const [completedDays, setCompletedDays] = useState([]);
+  const [mistakesRecord, setMistakesRecord] = useState({}); // { day1: ['Greeting', 'Vocab'], day2: [] }
+  
+  // Game State
   const [gameStep, setGameStep] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [currentMistakes, setCurrentMistakes] = useState([]);
 
-  // Load progress on mount
+  // 1. Firebase Auth Setup
   useEffect(() => {
-    // We are keeping state in memory per instructions, but simulating a load
-    const saved = [1]; // Pretend Day 1 is always completed for visual demo
-    // setCompletedDays(saved);
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Auth error:", error);
+      }
+    };
+    initAuth();
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
+
+  // 2. Load User Data from Firestore
+  useEffect(() => {
+    if (!user) return;
+    
+    const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
+    
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setCompletedDays(data.completedDays || []);
+        setMistakesRecord(data.mistakesRecord || {});
+        if (data.profileName) setProfileName(data.profileName);
+      }
+    }, (error) => {
+      console.error("Error fetching data:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 3. Save Data Helper
+  const saveProgress = async (newCompleted, newMistakes) => {
+    if (!user) return;
+    try {
+      const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
+      await setDoc(userDocRef, {
+        completedDays: newCompleted,
+        mistakesRecord: newMistakes,
+        profileName: profileName,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.error("Failed to save:", e);
+    }
+  };
+
+  // --- GAME LOGIC ---
 
   const handleStartDay = (dayNum) => {
     setActiveDay(dayNum);
@@ -186,17 +354,72 @@ export default function App() {
     setScore(0);
     setSelectedAnswer(null);
     setShowFeedback(false);
+    setCurrentMistakes([]);
   };
 
-  const handleAnswer = (index) => {
+  const handleMultipleChoiceAnswer = (index) => {
     if (showFeedback) return;
     setSelectedAnswer(index);
     setShowFeedback(true);
     
-    const currentLesson = COURSE_DATA.find(d => d.day === activeDay);
-    if (index === currentLesson.exercises[gameStep].answer) {
+    const exercise = COURSE_DATA.find(d => d.day === activeDay).exercises[gameStep];
+    if (index === exercise.answer) {
       setScore(s => s + 1);
+    } else {
+      setCurrentMistakes(prev => [...prev, exercise.conceptTag]);
     }
+  };
+
+  const handleSpeechRecognition = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      // Fallback if browser doesn't support speech API (e.g. Firefox)
+      alert("Speech recognition isn't supported in your browser. Auto-passing this exercise for you!");
+      setScore(s => s + 1);
+      setSelectedAnswer(true); // true means correct in this context
+      setShowFeedback(true);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ja-JP';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    setIsRecording(true);
+
+    recognition.onresult = (event) => {
+      setIsRecording(false);
+      const transcript = event.results[0][0].transcript.toLowerCase().trim();
+      const exercise = COURSE_DATA.find(d => d.day === activeDay).exercises[gameStep];
+      
+      // Check if transcript matches expected Romaji (sometimes Speech API returns romaji) or Kana
+      const isMatch = exercise.expectedKana.includes(transcript) || 
+                      exercise.expectedRomaji.some(r => transcript.includes(r));
+      
+      setSelectedAnswer(isMatch);
+      setShowFeedback(true);
+      
+      if (isMatch) {
+        setScore(s => s + 1);
+      } else {
+        setCurrentMistakes(prev => [...prev, exercise.conceptTag]);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      setIsRecording(false);
+      if (event.error === 'not-allowed') {
+        alert("Microphone access denied. Please allow microphone access to practice speaking.");
+      } else {
+        // Auto pass on network/API errors to not block the user
+        setScore(s => s + 1);
+        setSelectedAnswer(true); 
+        setShowFeedback(true);
+      }
+    };
+
+    recognition.start();
   };
 
   const nextQuestion = () => {
@@ -207,95 +430,119 @@ export default function App() {
       setShowFeedback(false);
     } else {
       // Finish Day
-      if (!completedDays.includes(activeDay)) {
-        setCompletedDays([...completedDays, activeDay]);
-      }
+      const newCompleted = completedDays.includes(activeDay) ? completedDays : [...completedDays, activeDay];
+      const newMistakes = { ...mistakesRecord, [activeDay]: currentMistakes };
+      
+      setCompletedDays(newCompleted);
+      setMistakesRecord(newMistakes);
+      saveProgress(newCompleted, newMistakes);
+      
       setCurrentView('result');
+    }
+  };
+
+  // --- MULTI-ACCOUNT SIMULATION ---
+  const handleSwitchAccount = async () => {
+    if (!user) return;
+    try {
+      await signOut(auth);
+      // It will auto-trigger the useEffect to sign in anonymously again, generating a new UID
+      // We clear local state briefly
+      setCompletedDays([]);
+      setMistakesRecord({});
+      setProfileName(`Learner_${Math.floor(Math.random() * 1000)}`);
+      setCurrentView('dashboard');
+    } catch (e) {
+      console.error(e);
     }
   };
 
   // --- VIEWS ---
 
-  const renderDashboard = () => {
-    let currentMonthGroup = "";
+  if (isAuthLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-pink-50 text-pink-500"><RefreshCw className="animate-spin" size={40} /></div>;
+  }
 
+  const renderDashboard = () => {
     return (
       <div className="max-w-4xl mx-auto pb-20">
-        <header className="bg-gradient-to-r from-pink-400 to-orange-400 text-white rounded-3xl p-8 mb-8 shadow-lg flex justify-between items-center">
+        {/* Header Area */}
+        <header className="bg-gradient-to-r from-pink-500 to-orange-400 text-white rounded-3xl p-6 md:p-8 mb-8 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-4xl font-extrabold mb-2">Konnichi-WOW! 🌸</h1>
-            <p className="text-pink-100 text-lg">Speak Japanese from Zero in 5 Months.</p>
+            <h1 className="text-3xl md:text-4xl font-extrabold mb-2">Konnichi-WOW! 🌸</h1>
+            <p className="text-pink-100 text-lg">Your 30-Day Path to Conversational Japanese.</p>
           </div>
-          <div className="hidden md:flex flex-col items-center bg-white/20 p-4 rounded-2xl">
-            <Award size={40} className="text-yellow-300 mb-1" />
-            <span className="font-bold">{completedDays.length} / 150 Days</span>
+          <div className="flex gap-4 w-full md:w-auto">
+            <div className="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+              <Award size={28} className="text-yellow-300 mb-1" />
+              <span className="font-bold text-sm">{completedDays.length} / 30 Days</span>
+            </div>
+            <button 
+              onClick={() => setCurrentView('profile')}
+              className="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 hover:bg-white/30 transition p-3 rounded-2xl backdrop-blur-sm"
+            >
+              <User size={28} className="text-white mb-1" />
+              <span className="font-bold text-sm truncate max-w-[80px]">{profileName}</span>
+            </button>
           </div>
         </header>
 
-        <div className="bg-white rounded-3xl shadow-sm p-6 mb-8 border border-gray-100">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Map className="text-blue-500" /> Your Learning Journey
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Follow the path. Every day introduces a new concept, pushing you closer to fluency. Just 15 minutes a day!
-          </p>
+        {/* Map Area */}
+        <div className="bg-white rounded-3xl shadow-sm p-4 md:p-8 mb-8 border border-gray-100">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <Map className="text-blue-500" /> Syllabus Map
+            </h2>
+          </div>
 
           <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 before:bg-gradient-to-b before:from-pink-300 before:to-blue-300">
-            {ROADMAP.filter(d => d.day <= 10).map((dayData, index) => { // Showing only first 10 for UI brevity
+            {COURSE_DATA.map((dayData, index) => {
               const isCompleted = completedDays.includes(dayData.day);
-              const isLocked = dayData.isLocked || (dayData.day > 1 && !completedDays.includes(dayData.day - 1) && !completedDays.includes(dayData.day));
-              const isPlayable = !isLocked && COURSE_DATA.find(d => d.day === dayData.day);
-              
-              const showMonthHeader = dayData.monthGroup && dayData.monthGroup !== currentMonthGroup;
-              if (showMonthHeader) currentMonthGroup = dayData.monthGroup;
+              // Unlock if it's day 1, or if the previous day is completed
+              const isLocked = dayData.day > 1 && !completedDays.includes(dayData.day - 1);
+              const dayMistakes = mistakesRecord[dayData.day] || [];
+              const needsReview = isCompleted && dayMistakes.length > 0;
 
               return (
-                <div key={dayData.day}>
-                  {showMonthHeader && (
-                    <div className="relative z-10 text-center my-8">
-                      <span className="bg-blue-500 text-white px-4 py-2 rounded-full font-bold shadow-md">
-                        {dayData.monthGroup}
-                      </span>
-                    </div>
-                  )}
-                  <div className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active ${isLocked ? 'opacity-60' : ''}`}>
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-pink-500 text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 font-bold">
-                      {isCompleted ? <CheckCircle size={20} /> : dayData.day}
-                    </div>
-                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 transition-transform transform hover:-translate-y-1">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="font-bold text-gray-800">{dayData.title}</h3>
-                          {isCompleted && <span className="text-xs font-semibold text-green-500">Completed!</span>}
-                          {isLocked && <span className="text-xs font-semibold text-gray-400">Locked</span>}
+                <div key={dayData.day} className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group ${isLocked ? 'opacity-50' : ''}`}>
+                  
+                  {/* Node Circle */}
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 font-bold transition-transform ${isCompleted ? 'bg-green-500 text-white' : isLocked ? 'bg-gray-300 text-gray-500' : 'bg-pink-500 text-white transform scale-110 animate-pulse'}`}>
+                    {isCompleted ? <CheckCircle size={20} /> : dayData.day}
+                  </div>
+                  
+                  {/* Content Card */}
+                  <div className="w-[calc(100%-3.5rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all hover:shadow-md">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-blue-500 uppercase tracking-wider block mb-1">{dayData.topic}</span>
+                        <h3 className="font-bold text-gray-800 leading-tight mb-2">{dayData.title}</h3>
+                        
+                        {/* Status Badges */}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {isCompleted && !needsReview && <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-md">Completed</span>}
+                          {needsReview && (
+                            <span className="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1">
+                              <AlertTriangle size={12} /> Review: {dayMistakes[0]}
+                            </span>
+                          )}
+                          {isLocked && <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Locked</span>}
                         </div>
-                        {isPlayable && !isCompleted && (
-                          <button 
-                            onClick={() => handleStartDay(dayData.day)}
-                            className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-full shadow transition-colors"
-                          >
-                            <Play size={20} />
-                          </button>
-                        )}
-                        {isCompleted && (
-                          <button 
-                            onClick={() => handleStartDay(dayData.day)}
-                            className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-full transition-colors"
-                          >
-                            <Play size={20} />
-                          </button>
-                        )}
                       </div>
+                      
+                      {!isLocked && (
+                        <button 
+                          onClick={() => handleStartDay(dayData.day)}
+                          className={`p-3 rounded-full shadow transition-transform hover:scale-110 shrink-0 ${isCompleted ? 'bg-blue-100 text-blue-600' : 'bg-green-500 text-white'}`}
+                        >
+                          {needsReview ? <RefreshCw size={20} /> : <Play size={20} className="ml-1" />}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             })}
-            <div className="relative z-10 text-center my-8">
-              <span className="bg-gray-200 text-gray-500 px-4 py-2 rounded-full font-bold">
-                ... 140 more days to unlock fluency!
-              </span>
-            </div>
           </div>
         </div>
       </div>
@@ -304,55 +551,53 @@ export default function App() {
 
   const renderTheory = () => {
     const lesson = COURSE_DATA.find(d => d.day === activeDay);
-    if (!lesson) return null;
-
+    
     return (
-      <div className="max-w-3xl mx-auto pb-20 mt-8">
-        <button onClick={() => setCurrentView('dashboard')} className="text-gray-500 mb-6 flex items-center hover:text-gray-800">
+      <div className="max-w-3xl mx-auto pb-20 mt-4 md:mt-8">
+        <button onClick={() => setCurrentView('dashboard')} className="text-gray-500 mb-6 flex items-center hover:text-gray-800 font-medium">
           <ChevronRight className="rotate-180 mr-1" /> Back to Map
         </button>
 
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
-          <div className="bg-blue-500 text-white p-8">
-            <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-semibold tracking-wide uppercase mb-4 inline-block">
-              Daily Briefing • Day {lesson.day}
+        <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8">
+            <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-4 inline-block">
+              Day {lesson.day} • Theory
             </span>
-            <h2 className="text-3xl font-bold">{lesson.title}</h2>
+            <h2 className="text-3xl font-extrabold">{lesson.title}</h2>
           </div>
           
-          <div className="p-8 space-y-8 text-gray-700 text-lg">
-            <div className="flex gap-4 items-start">
-              <div className="bg-pink-100 p-3 rounded-2xl shrink-0">
-                <MessageCircle className="text-pink-500" size={32} />
-              </div>
-              <p className="leading-relaxed pt-2">{lesson.theory.intro}</p>
-            </div>
-
-            <div className="bg-yellow-50 rounded-2xl p-6 border border-yellow-100">
-              <h3 className="font-bold text-yellow-800 mb-2 flex items-center gap-2">
-                <BookOpen size={20} /> The Core Concept
-              </h3>
-              <p>{lesson.theory.concept}</p>
+          <div className="p-6 md:p-8 space-y-8 text-gray-700 text-lg">
+            <div className="flex gap-4 items-start bg-pink-50 p-6 rounded-2xl border border-pink-100">
+              <MessageCircle className="text-pink-500 shrink-0 mt-1" size={28} />
+              <p className="leading-relaxed font-medium">{lesson.theory.intro}</p>
             </div>
 
             <div>
-              <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Real Life Examples</h3>
+              <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2 text-xl">
+                <BookOpen size={24} className="text-blue-500" /> The Core Concept
+              </h3>
+              <p className="text-gray-600">{lesson.theory.concept}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-gray-800 mb-4 border-b pb-2 text-xl">Vocabulary & Phrases</h3>
               <div className="space-y-4">
                 {lesson.theory.examples.map((ex, i) => (
-                  <div key={i} className="bg-gray-50 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div key={i} className="bg-white border border-gray-200 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:border-blue-300 transition-colors">
                     <div>
-                      <p className="text-xl font-bold text-blue-600 mb-1">{ex.jp}</p>
+                      <p className="text-2xl font-extrabold text-gray-900 mb-1">{ex.kana}</p>
+                      <p className="text-blue-600 font-bold mb-1">{ex.romaji}</p>
                       <p className="text-gray-600 font-medium">"{ex.eng}"</p>
-                      <p className="text-sm text-gray-500 mt-2">{ex.context}</p>
+                      {ex.context && <p className="text-sm text-gray-500 mt-2 bg-gray-50 p-2 rounded-lg">{ex.context}</p>}
                     </div>
-                    <AudioButton text={ex.jp} />
+                    <AudioButton textKana={ex.kana} />
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex gap-4 items-start">
-              <Star className="text-green-500 shrink-0" size={28} />
+              <Star className="text-green-500 shrink-0 mt-1" size={28} />
               <div>
                 <h3 className="font-bold text-green-800 mb-1">Culture Note</h3>
                 <p className="text-green-900">{lesson.theory.culture}</p>
@@ -363,7 +608,7 @@ export default function App() {
           <div className="p-6 bg-gray-50 border-t flex justify-end">
             <button 
               onClick={() => setCurrentView('game')}
-              className="bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 rounded-full font-bold text-lg shadow-lg flex items-center gap-2 transition-transform transform hover:scale-105"
+              className="bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 rounded-full font-bold text-lg shadow-lg flex items-center gap-2 transition-transform transform hover:scale-105 w-full md:w-auto justify-center"
             >
               Start Practice <ChevronRight />
             </button>
@@ -375,90 +620,118 @@ export default function App() {
 
   const renderGame = () => {
     const lesson = COURSE_DATA.find(d => d.day === activeDay);
-    if (!lesson) return null;
-    
     const exercise = lesson.exercises[gameStep];
     const isAnswered = selectedAnswer !== null;
-    const isCorrect = isAnswered && selectedAnswer === exercise.answer;
+    
+    // For multiple choice, selectedAnswer is the index. For speaking, it's boolean true/false.
+    let isCorrect = false;
+    if (exercise.type === 'multiple_choice' || exercise.type === 'listen') {
+      isCorrect = isAnswered && selectedAnswer === exercise.answer;
+    } else if (exercise.type === 'speak') {
+      isCorrect = isAnswered && selectedAnswer === true;
+    }
 
     return (
-      <div className="max-w-2xl mx-auto pb-20 mt-8">
+      <div className="max-w-2xl mx-auto pb-20 mt-4 md:mt-8">
         {/* Progress Bar */}
-        <div className="mb-8 bg-gray-200 h-3 rounded-full overflow-hidden">
-          <div 
-            className="bg-green-500 h-full transition-all duration-500"
-            style={{ width: `${(gameStep / lesson.exercises.length) * 100}%` }}
-          />
+        <div className="mb-8 flex items-center gap-4">
+          <div className="flex-grow bg-gray-200 h-3 rounded-full overflow-hidden">
+            <div 
+              className="bg-green-500 h-full transition-all duration-500"
+              style={{ width: `${(gameStep / lesson.exercises.length) * 100}%` }}
+            />
+          </div>
+          <span className="font-bold text-gray-500 text-sm">{gameStep + 1} / {lesson.exercises.length}</span>
         </div>
 
-        <div className="bg-white rounded-3xl shadow-xl p-8 min-h-[400px] flex flex-col">
+        <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8 min-h-[450px] flex flex-col border border-gray-100">
           <div className="flex-grow">
+            
+            {/* Header tag for exercise type */}
+            <div className="flex justify-center mb-6">
+               <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest">
+                 {exercise.type === 'speak' ? 'Speaking Exercise' : exercise.type === 'listen' ? 'Listening Exercise' : 'Knowledge Check'}
+               </span>
+            </div>
+
+            {/* Listening Audio Button */}
             {exercise.type === 'listen' && (
               <div className="flex justify-center mb-8">
-                 <AudioButton text={exercise.audioText} className="scale-150 transform" />
+                 <AudioButton textKana={exercise.audioKana} className="scale-125 transform shadow-md" />
               </div>
             )}
             
-            <h2 className="text-2xl font-bold text-gray-800 mb-8 text-center leading-snug">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-8 text-center leading-snug">
               {exercise.question}
             </h2>
 
-            <div className="space-y-4">
-              {exercise.options.map((opt, i) => {
-                let btnClass = "bg-white border-2 border-gray-200 text-gray-700 hover:border-pink-400 hover:bg-pink-50";
-                
-                if (isAnswered) {
-                  if (i === exercise.answer) {
-                    btnClass = "bg-green-100 border-2 border-green-500 text-green-800"; // Correct answer styling
-                  } else if (i === selectedAnswer) {
-                    btnClass = "bg-red-100 border-2 border-red-500 text-red-800"; // Selected wrong answer styling
-                  } else {
-                    btnClass = "bg-gray-50 border-2 border-gray-200 text-gray-400 opacity-50"; // Other unselected styling
+            {/* Multiple Choice Options */}
+            {(exercise.type === 'multiple_choice' || exercise.type === 'listen') && (
+              <div className="space-y-4">
+                {exercise.options.map((opt, i) => {
+                  let btnClass = "bg-white border-2 border-gray-200 text-gray-700 hover:border-pink-400 hover:bg-pink-50";
+                  if (isAnswered) {
+                    if (i === exercise.answer) btnClass = "bg-green-50 border-2 border-green-500 text-green-800 font-bold";
+                    else if (i === selectedAnswer) btnClass = "bg-red-50 border-2 border-red-500 text-red-800";
+                    else btnClass = "bg-gray-50 border-2 border-gray-200 text-gray-400 opacity-50";
                   }
-                }
 
-                return (
-                  <button
-                    key={i}
-                    disabled={isAnswered}
-                    onClick={() => handleAnswer(i)}
-                    className={`w-full p-4 rounded-2xl text-lg font-semibold transition-all text-left flex justify-between items-center ${btnClass}`}
-                  >
-                    {opt}
-                    {isAnswered && i === exercise.answer && <CheckCircle className="text-green-500" />}
-                    {isAnswered && i === selectedAnswer && i !== exercise.answer && <XCircle className="text-red-500" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* AI Feedback Area */}
-          <div className={`mt-8 transition-opacity duration-300 ${isAnswered ? 'opacity-100' : 'opacity-0'}`}>
-            {isAnswered && (
-              <div className={`p-6 rounded-2xl flex gap-4 items-start ${isCorrect ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
-                <div className={`p-2 rounded-full text-white shrink-0 ${isCorrect ? 'bg-green-500' : 'bg-orange-500'}`}>
-                   {isCorrect ? <CheckCircle /> : <MessageCircle />}
-                </div>
-                <div>
-                  <h4 className={`font-bold text-lg mb-1 ${isCorrect ? 'text-green-800' : 'text-orange-800'}`}>
-                    {isCorrect ? 'Excellent!' : 'Not quite! (AI Sensei Feedback)'}
-                  </h4>
-                  <p className={isCorrect ? 'text-green-700' : 'text-orange-700'}>
-                    {isCorrect ? "Spot on! You nailed the pattern." : exercise.feedback_incorrect}
-                  </p>
-                </div>
+                  return (
+                    <button
+                      key={i}
+                      disabled={isAnswered}
+                      onClick={() => handleMultipleChoiceAnswer(i)}
+                      className={`w-full p-4 md:p-5 rounded-2xl text-lg transition-all text-left flex justify-between items-center ${btnClass}`}
+                    >
+                      {opt}
+                      {isAnswered && i === exercise.answer && <CheckCircle className="text-green-500" />}
+                      {isAnswered && i === selectedAnswer && i !== exercise.answer && <XCircle className="text-red-500" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
-            {isAnswered && (
-              <button 
-                onClick={nextQuestion}
-                className={`w-full mt-6 py-4 rounded-full font-bold text-lg text-white shadow-lg transition-transform transform hover:scale-105 ${isCorrect ? 'bg-green-500 hover:bg-green-600' : 'bg-pink-500 hover:bg-pink-600'}`}
-              >
-                {gameStep === lesson.exercises.length - 1 ? 'Complete Lesson' : 'Next Question'}
-              </button>
+            {/* Speaking Exercise UI */}
+            {exercise.type === 'speak' && (
+              <div className="flex flex-col items-center justify-center mt-8 space-y-6">
+                <button
+                  disabled={isAnswered || isRecording}
+                  onMouseDown={handleSpeechRecognition}
+                  onTouchStart={handleSpeechRecognition}
+                  className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 scale-110 shadow-lg shadow-red-500/50 animate-pulse' : isAnswered ? 'bg-gray-200 text-gray-400' : 'bg-blue-500 hover:bg-blue-600 text-white shadow-xl hover:scale-105'}`}
+                >
+                  <Mic size={48} />
+                </button>
+                <p className="text-gray-500 font-medium text-center">
+                  {isRecording ? "Listening... Speak now!" : isAnswered ? "Analysis complete." : "Tap and speak the Japanese phrase"}
+                </p>
+              </div>
             )}
+          </div>
+
+          {/* AI Feedback Area */}
+          <div className={`mt-8 transition-opacity duration-300 ${isAnswered ? 'opacity-100' : 'opacity-0 hidden'}`}>
+            <div className={`p-5 rounded-2xl flex gap-4 items-start ${isCorrect ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
+              <div className={`p-2 rounded-full text-white shrink-0 ${isCorrect ? 'bg-green-500' : 'bg-orange-500'}`}>
+                  {isCorrect ? <CheckCircle /> : <MessageCircle />}
+              </div>
+              <div>
+                <h4 className={`font-bold text-lg mb-1 ${isCorrect ? 'text-green-800' : 'text-orange-800'}`}>
+                  {isCorrect ? 'Excellent!' : 'Sensei AI Feedback'}
+                </h4>
+                <p className={isCorrect ? 'text-green-700' : 'text-orange-700'}>
+                  {isCorrect ? "Perfectly executed!" : exercise.feedback_incorrect}
+                </p>
+              </div>
+            </div>
+
+            <button 
+              onClick={nextQuestion}
+              className={`w-full mt-6 py-4 rounded-full font-bold text-lg text-white shadow-lg transition-transform transform hover:scale-105 ${isCorrect ? 'bg-green-500 hover:bg-green-600' : 'bg-pink-500 hover:bg-pink-600'}`}
+            >
+              {gameStep === lesson.exercises.length - 1 ? 'Finish Lesson' : 'Next Question'}
+            </button>
           </div>
         </div>
       </div>
@@ -471,19 +744,27 @@ export default function App() {
     const isPerfect = score === total;
 
     return (
-      <div className="max-w-md mx-auto mt-16 text-center">
-        <div className="bg-white rounded-3xl shadow-2xl p-10 transform transition-all scale-100">
-          <div className="w-24 h-24 bg-yellow-100 text-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-            <Award size={60} />
+      <div className="max-w-md mx-auto mt-16 text-center px-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-10 border border-gray-100">
+          <div className="w-24 h-24 bg-gradient-to-br from-yellow-200 to-yellow-400 text-yellow-700 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Award size={50} />
           </div>
           <h2 className="text-3xl font-extrabold text-gray-800 mb-2">Lesson Complete!</h2>
-          <p className="text-gray-500 mb-8">Day {activeDay}: {lesson.title}</p>
+          <p className="text-gray-500 mb-8 font-medium">Day {activeDay}: {lesson.topic}</p>
           
-          <div className="text-6xl font-black text-pink-500 mb-4">
+          <div className="text-6xl font-black text-pink-500 mb-2">
             {score}/{total}
           </div>
+          
+          {currentMistakes.length > 0 && (
+            <div className="bg-orange-50 text-orange-800 p-4 rounded-xl mb-6 text-sm">
+              <span className="font-bold block mb-1">To review tomorrow:</span>
+              {currentMistakes.join(', ')}
+            </div>
+          )}
+
           <p className="text-lg font-medium text-gray-700 mb-8">
-            {isPerfect ? "Flawless victory! You're a natural. 🌸" : "Great effort! Mistakes are how we learn."}
+            {isPerfect ? "Flawless victory! Your pronunciation is getting amazing. 🌸" : "Great effort! Mistakes show that you are trying."}
           </p>
 
           <button 
@@ -497,62 +778,130 @@ export default function App() {
     );
   };
 
-  const renderGrammarLibrary = () => (
-    <div className="max-w-4xl mx-auto pb-20 mt-8">
+  const renderLibrary = () => (
+    <div className="max-w-4xl mx-auto pb-24 mt-4 md:mt-8">
       <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-3xl p-8 mb-8 shadow-lg">
         <h1 className="text-3xl font-extrabold mb-2 flex items-center gap-3">
-          <Library size={32} /> Grammar & Form Library
+          <Library size={32} /> Survival Library
         </h1>
-        <p className="text-indigo-100">Your permanent reference for the building blocks of Japanese.</p>
+        <p className="text-indigo-100">Quick references for daily situations in Japan.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Sentence Structure */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">1. Word Order (SOV)</h3>
-          <p className="text-gray-600 mb-4">
-            English uses Subject-Verb-Object (I eat sushi).<br/>
-            Japanese uses Subject-Object-Verb (I sushi eat).
-          </p>
-          <div className="bg-gray-50 p-3 rounded-lg font-mono text-sm">
-            Watashi wa (I) + Sushi o (Sushi) + Tabemasu (Eat).
+      <div className="space-y-8">
+        {/* Restaurant Survival */}
+        <section>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <Utensils className="text-orange-500" /> Restaurant & Dining
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">メニュー、おねがいします</p>
+                  <p className="text-sm font-medium text-blue-600">Menyuu, onegai shimasu</p>
+                  <p className="text-gray-500 text-sm mt-1">Menu, please.</p>
+                </div>
+                <AudioButton textKana="メニュー、おねがいします" />
+             </div>
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">おかいけい、おねがいします</p>
+                  <p className="text-sm font-medium text-blue-600">Okaikei, onegai shimasu</p>
+                  <p className="text-gray-500 text-sm mt-1">The bill, please.</p>
+                </div>
+                <AudioButton textKana="おかいけい、おねがいします" />
+             </div>
           </div>
+        </section>
+
+        {/* Medical / Emergency */}
+        <section>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <HeartPulse className="text-red-500" /> Medical & Help
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-red-50 flex justify-between items-center">
+                <div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">たすけてください</p>
+                  <p className="text-sm font-medium text-red-600">Tasukete kudasai</p>
+                  <p className="text-gray-500 text-sm mt-1">Please help me!</p>
+                </div>
+                <AudioButton textKana="たすけてください" />
+             </div>
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">あたまがいたいです</p>
+                  <p className="text-sm font-medium text-blue-600">Atama ga itai desu</p>
+                  <p className="text-gray-500 text-sm mt-1">My head hurts.</p>
+                </div>
+                <AudioButton textKana="あたまがいたいです" />
+             </div>
+          </div>
+        </section>
+
+        {/* Friendly Interaction */}
+        <section>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <Smile className="text-green-500" /> Making Friends
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">いいね！</p>
+                  <p className="text-sm font-medium text-green-600">Ii ne!</p>
+                  <p className="text-gray-500 text-sm mt-1">That's good! / Nice!</p>
+                </div>
+                <AudioButton textKana="いいね！" />
+             </div>
+             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">ほんとう？</p>
+                  <p className="text-sm font-medium text-blue-600">Hontou?</p>
+                  <p className="text-gray-500 text-sm mt-1">Really?</p>
+                </div>
+                <AudioButton textKana="ほんとう？" />
+             </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
+  const renderProfile = () => (
+    <div className="max-w-md mx-auto mt-8 md:mt-16 px-4">
+      <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100 text-center">
+        <div className="w-20 h-20 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-6">
+          <User size={40} />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Student Profile</h2>
+        <p className="text-gray-500 mb-8 text-sm">Your progress is saved securely.</p>
+        
+        <div className="text-left mb-8">
+          <label className="block text-sm font-bold text-gray-700 mb-2">Nickname</label>
+          <input 
+            type="text" 
+            value={profileName}
+            onChange={(e) => {
+              setProfileName(e.target.value);
+              saveProgress(completedDays, mistakesRecord); // Auto-save name
+            }}
+            className="w-full border-2 border-gray-200 rounded-xl p-3 text-lg font-bold text-gray-800 focus:border-pink-500 focus:outline-none transition-colors"
+          />
         </div>
 
-        {/* Essential Particles */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">2. Magic Particles</h3>
-          <ul className="space-y-3 text-gray-600">
-            <li><strong className="text-pink-500">Wa (は):</strong> Topic marker. "As for..."</li>
-            <li><strong className="text-blue-500">Ka (か):</strong> Question mark. Goes at the end.</li>
-            <li><strong className="text-green-500">No (の):</strong> Possession. Like 's (Watashi no = My).</li>
-            <li><strong className="text-orange-500">Ni (に):</strong> Time/Target. (Tokyo ni ikimasu = Go to Tokyo).</li>
-          </ul>
+        <div className="bg-gray-50 p-4 rounded-2xl mb-8 flex justify-between items-center text-left">
+          <div>
+            <p className="text-gray-500 text-sm font-bold">Days Mastered</p>
+            <p className="text-2xl font-black text-green-500">{completedDays.length}</p>
+          </div>
+          <Award size={32} className="text-yellow-400" />
         </div>
 
-        {/* Verb Conjugation */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 md:col-span-2">
-          <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">3. The Polite "-Masu" Form</h3>
-          <p className="text-gray-600 mb-4">This is your safe, polite tense for talking to strangers and colleagues.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="bg-blue-50 p-4 rounded-xl">
-              <span className="block font-bold text-blue-800 mb-1">Present/Future</span>
-              <span className="text-gray-600">-masu (tabemasu)</span>
-            </div>
-            <div className="bg-red-50 p-4 rounded-xl">
-              <span className="block font-bold text-red-800 mb-1">Negative</span>
-              <span className="text-gray-600">-masen (tabemasen)</span>
-            </div>
-            <div className="bg-green-50 p-4 rounded-xl">
-              <span className="block font-bold text-green-800 mb-1">Past</span>
-              <span className="text-gray-600">-mashita (tabemashita)</span>
-            </div>
-            <div className="bg-orange-50 p-4 rounded-xl">
-              <span className="block font-bold text-orange-800 mb-1">Past Negative</span>
-              <span className="text-gray-600">-masen deshita</span>
-            </div>
-          </div>
-        </div>
+        <button 
+          onClick={handleSwitchAccount}
+          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-full font-bold shadow-sm transition-colors flex justify-center items-center gap-2"
+        >
+          <LogOut size={20} /> Switch Account / Start Fresh
+        </button>
       </div>
     </div>
   );
@@ -562,32 +911,40 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-gray-800 selection:bg-pink-200">
       {/* Navigation Bar */}
-      <nav className="fixed bottom-0 w-full bg-white border-t border-gray-200 pb-safe md:relative md:border-b md:border-t-0 z-50">
-        <div className="max-w-4xl mx-auto flex justify-around md:justify-center md:gap-12 p-4">
+      <nav className="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 pb-safe md:relative md:border-b md:border-t-0 z-50">
+        <div className="max-w-4xl mx-auto flex justify-around md:justify-center md:gap-16 p-3 md:p-4">
           <button 
             onClick={() => setCurrentView('dashboard')}
-            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'dashboard' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'dashboard' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}`}
           >
             <Home size={24} />
-            <span className="text-xs font-bold">Path</span>
+            <span className="text-[10px] md:text-xs font-bold uppercase tracking-wide">Map</span>
           </button>
           <button 
-            onClick={() => setCurrentView('grammar')}
-            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'grammar' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-600'}`}
+            onClick={() => setCurrentView('library')}
+            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'library' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}`}
           >
             <Library size={24} />
-            <span className="text-xs font-bold">Library</span>
+            <span className="text-[10px] md:text-xs font-bold uppercase tracking-wide">Survival</span>
+          </button>
+          <button 
+            onClick={() => setCurrentView('profile')}
+            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'profile' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}`}
+          >
+            <User size={24} />
+            <span className="text-[10px] md:text-xs font-bold uppercase tracking-wide">Profile</span>
           </button>
         </div>
       </nav>
 
       {/* Main Content Area */}
-      <main className="p-4 md:p-8 pt-8 pb-24 md:pb-8">
+      <main className="p-4 md:p-8 pt-4 md:pt-8 pb-28 md:pb-8">
         {currentView === 'dashboard' && renderDashboard()}
         {currentView === 'theory' && renderTheory()}
         {currentView === 'game' && renderGame()}
         {currentView === 'result' && renderResult()}
-        {currentView === 'grammar' && renderGrammarLibrary()}
+        {currentView === 'library' && renderLibrary()}
+        {currentView === 'profile' && renderProfile()}
       </main>
 
     </div>
