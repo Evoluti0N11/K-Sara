@@ -60,6 +60,17 @@
     }
     .animate-pop { animation: pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     
+    /* Chat Bubble Tail for Scenarios */
+    .chat-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -10px;
+      left: 20px;
+      border-width: 10px 10px 0 0;
+      border-style: solid;
+      border-color: #eef2ff transparent transparent transparent;
+    }
+
     /* Mobile Input Zoom Fix */
     input[type="text"] { font-size: 16px; } 
 
@@ -75,7 +86,7 @@
     .animate-bounce-slow { animation: bounce 3s infinite; }
     
     /* Override Leaflet UI to fit perfectly */
-    .leaflet-container { font-family: 'Nunito', sans-serif; z-index: 10; }
+    .leaflet-container { font-family: 'Nunito', sans-serif; z-index: 10; border-radius: 2rem; }
     .leaflet-popup-content-wrapper { border-radius: 1rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 5px; }
     .leaflet-popup-content { margin: 10px 15px; }
   </style>
@@ -98,7 +109,7 @@
       user: null,
       profileName: "Learner",
       isAuthLoading: true,
-      currentView: 'dashboard', // dashboard, theory, game, result, library, explore, profile
+      currentView: 'dashboard', 
       activeDay: 1,
       completedDays: [],
       mistakesRecord: {},
@@ -115,43 +126,48 @@
       combo: 0 
     };
 
-    // Pre-warm Speech Synthesis to load voices (fixes Firefox delay)
     if ('speechSynthesis' in window) {
       window.speechSynthesis.getVoices();
       window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
     }
 
-    // Map Instance Variable
     let myMap = null;
 
-    // --- DATA & SYLLABUS ---
+    // --- EXPANDED DATA & SYLLABUS ---
     const DETAILED_LESSONS = [
       {
         day: 1,
         title: "First Encounters 👋",
         topic: "Greetings & Basics",
         theory: {
-          intro: "Welcome to Day 1! In Japan, greetings are the foundation of respect. The language shifts based on the time of day and social status. Today we learn the core greetings and the all-important 'Sumimasen'.",
+          intro: "Welcome to Day 1! In Japan, greetings are the foundation of respect. Today we learn the core greetings, the all-important 'Sumimasen', and basic manners for your first day.",
           concept: "Morning greetings have a polite suffix ('gozaimasu') that you drop with friends. 'Sumimasen' is your magic word—it means 'Excuse me', 'Sorry', and sometimes even 'Thank you'!",
           examples: [
             { kana: "おはようございます", romaji: "Ohayou gozaimasu", eng: "Good morning (Polite)", context: "Use until 11:00 AM. 🌅" },
             { kana: "こんにちは", romaji: "Konnichiwa", eng: "Good afternoon / Hello", context: "Standard daytime greeting. ☀️" },
             { kana: "こんばんは", romaji: "Konbanwa", eng: "Good evening", context: "Use after sunset. 🌙" },
             { kana: "すみません", romaji: "Sumimasen", eng: "Excuse me / Sorry", context: "Use to get a waiter's attention or apologize. 🙏" },
-            { kana: "ありがとう", romaji: "Arigatou", eng: "Thank you", context: "Add 'gozaimasu' to be polite to strangers. 🎁" }
+            { kana: "ありがとう", romaji: "Arigatou", eng: "Thank you", context: "Add 'gozaimasu' to be polite to strangers. 🎁" },
+            { kana: "いただきます", romaji: "Itadakimasu", eng: "Let's eat", context: "Say this with hands together before every meal. 🍱" },
+            { kana: "おやすみなさい", romaji: "Oyasuminasai", eng: "Good night", context: "Before going to bed. 💤" }
           ],
-          culture: "Bow slightly (about 15 degrees) when saying these to strangers or superiors. It shows instant respect."
+          culture: "Bow slightly (about 15 degrees) when saying these to strangers or superiors. Never eat while walking down the street; it's considered poor manners!"
         },
         exercises: [
           { type: 'multiple_choice', question: "It's 8:30 AM and you see your boss. What do you say?", options: ["Konnichiwa", "Ohayou gozaimasu", "Konbanwa"], optionsKana: ["こんにちは", "おはようございます", "こんばんは"], answer: 1, conceptTag: "Morning Greeting", feedback_incorrect: "The sun is just coming up! 'Konnichiwa' is for daytime." },
           { type: 'listen', question: "Listen to the audio. Which greeting is this?", audioKana: "こんにちは", options: ["Good morning", "Good afternoon", "Good evening"], answer: 1, conceptTag: "Listening Comp", feedback_incorrect: "That was 'Konnichiwa' (Good afternoon)." },
           { type: 'speak', question: "Tap the microphone and say 'Good evening' in Japanese.", expectedRomaji: ["konbanwa", "kombanwa"], expectedKana: ["こんばんは"], conceptTag: "Pronunciation", feedback_incorrect: "Try to say 'Konbanwa'. Focus on the 'ban' sound!" },
-          { type: 'multiple_choice', question: "You bumped into someone on the train. What is the best thing to say?", options: ["Arigatou", "Sumimasen", "Ohayou"], optionsKana: ["ありがとう", "すみません", "おはよう"], answer: 1, conceptTag: "Apology", feedback_incorrect: "'Sumimasen' means 'Excuse me' or 'Sorry'. It's perfect for bumping into people." },
+          { type: 'conversation', context: "Someone drops their wallet, you pick it up and tap their shoulder.", question: "What should you say to get their attention politely?", options: ["Arigatou", "Sumimasen", "Ohayou"], optionsKana: ["ありがとう", "すみません", "おはよう"], answer: 1, conceptTag: "Attention", feedback_incorrect: "'Sumimasen' means 'Excuse me'." },
           { type: 'listen', question: "What does this mean?", audioKana: "すみません", options: ["Thank you", "Excuse me / Sorry", "Good night"], answer: 1, conceptTag: "Listening", feedback_incorrect: "That was 'Sumimasen'." },
-          { type: 'speak', question: "Say 'Thank you' (Casual)", expectedRomaji: ["arigato", "arigatou"], expectedKana: ["ありがとう"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'A-ri-ga-to-u'." },
+          { type: 'multiple_choice', question: "You are about to dig into a delicious bowl of Ramen. What must you say first?", options: ["Itadakimasu", "Arigatou", "Konnichiwa"], optionsKana: ["いただきます", "ありがとう", "こんにちは"], answer: 0, conceptTag: "Dining Manners", feedback_incorrect: "'Itadakimasu' shows gratitude for the meal." },
+          { type: 'speak', question: "Say 'Let's eat / I humbly receive' before a meal.", expectedRomaji: ["itadakimasu"], expectedKana: ["いただきます"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'I-ta-da-ki-ma-su'." },
           { type: 'multiple_choice', question: "How do you make 'Arigatou' polite when talking to a cashier?", options: ["Arigatou sumimasen", "Arigatou gozaimasu", "Arigatou konnichiwa"], optionsKana: ["ありがとうすみません", "ありがとうございます", "ありがとうこんにちは"], answer: 1, conceptTag: "Politeness", feedback_incorrect: "Add 'gozaimasu' to make things polite!" },
           { type: 'listen', question: "Identify this phrase:", audioKana: "おはようございます", options: ["Good evening", "Good morning (Polite)", "Excuse me"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Listen for the long 'gozaimasu' at the end. It's 'Ohayou gozaimasu'." },
-          { type: 'speak', question: "Call the waiter! Say 'Excuse me!'", expectedRomaji: ["sumimasen"], expectedKana: ["すみません"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Su-mi-ma-sen!'" }
+          { type: 'conversation', context: "You are leaving a friend's house late at night to go sleep.", question: "What do you say?", options: ["Oyasuminasai", "Konnichiwa", "Sumimasen"], optionsKana: ["おやすみなさい", "こんにちは", "すみません"], answer: 0, conceptTag: "Night Greeting", feedback_incorrect: "'Oyasuminasai' means Good night." },
+          { type: 'speak', question: "Call the waiter! Say 'Excuse me!'", expectedRomaji: ["sumimasen"], expectedKana: ["すみません"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Su-mi-ma-sen!'" },
+          { type: 'multiple_choice', question: "True or False: It is polite to eat a sandwich while walking around Tokyo.", options: ["True", "False"], optionsKana: ["", ""], answer: 1, conceptTag: "Culture", feedback_incorrect: "False! Find a spot to sit or stand near a convenience store to eat." },
+          { type: 'speak', question: "Say 'Good morning' politely.", expectedRomaji: ["ohayou gozaimasu", "ohayougozaimasu"], expectedKana: ["おはようございます"], conceptTag: "Fluency", feedback_incorrect: "Ohayou gozaimasu!" },
+          { type: 'listen', question: "What are they saying before a meal?", audioKana: "いただきます", options: ["Excuse me", "Let's eat", "Good night"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Itadakimasu!" }
         ]
       },
       {
@@ -159,26 +175,32 @@
         title: "The Power of 'Desu' 🧠",
         topic: "Self Introduction",
         theory: {
-          intro: "Today, we learn how to state facts using the most important word in Japanese: 'Desu'. We also learn how to introduce ourselves.",
-          concept: "'Desu' acts like 'is/am/are'. The structure is: [Topic] wa [Info] desu.",
+          intro: "Today, we learn how to state facts and make friends using 'Desu'. We will learn to introduce our name, nationality, and profession.",
+          concept: "'Desu' acts like 'is/am/are'. The structure is: [Topic] wa [Info] desu. When asking questions, simply add 'ka' at the end.",
           examples: [
             { kana: "わたしはマリアです", romaji: "Watashi wa Maria desu.", eng: "I am Maria.", context: "Formal introduction. 👤" },
             { kana: "がくせいです", romaji: "Gakusei desu.", eng: "I am a student.", context: "Dropping 'Watashi wa' when it's obvious. 📚" },
             { kana: "アメリカじんです", romaji: "Amerika jin desu.", eng: "I am American.", context: "Country + 'jin' = Nationality. 🌎" },
-            { kana: "よろしくおねがいします", romaji: "Yoroshiku onegaishimasu", eng: "Nice to meet you / Please treat me well.", context: "Always say this at the end of an introduction. 🤝" }
+            { kana: "おなまえは？", romaji: "Onamae wa?", eng: "What is your name?", context: "Polite way to ask a name. 🏷️" },
+            { kana: "よろしくおねがいします", romaji: "Yoroshiku onegaishimasu", eng: "Nice to meet you.", context: "Always say this at the end of an introduction. 🤝" }
           ],
-          culture: "Japanese drops pronouns constantly. If someone asks your job, just say '[Job] desu'. Saying 'I am' every time sounds robotic!"
+          culture: "Japanese drops pronouns constantly. Saying 'I am' (Watashi wa) in every sentence sounds robotic. If someone asks your job, just say '[Job] desu'."
         },
         exercises: [
           { type: 'multiple_choice', question: "How would you say 'I am Anna'?", options: ["Anna wa watashi desu", "Watashi wa Anna desu", "Desu Anna watashi"], optionsKana: ["アンナはわたしです", "わたしはアンナです", "ですアンナわたし"], answer: 1, conceptTag: "Sentence Structure", feedback_incorrect: "Structure: [Watashi] + wa + [Name] + desu." },
           { type: 'speak', question: "Say 'I am a student' (Gakusei = student). Drop the 'I am'!", expectedRomaji: ["gakusei desu", "gakuseidesu"], expectedKana: ["がくせいです"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Gakusei desu'. (Gah-koo-say dess)." },
+          { type: 'conversation', context: "🧑 Local: Onamae wa? (What is your name?)", question: "How do you reply if your name is John?", options: ["John jin desu", "John desu", "Watashi wa John ka?"], optionsKana: ["ジョンじんです", "ジョンです", "わたしはジョンか？"], answer: 1, conceptTag: "Intro Response", feedback_incorrect: "Just say 'John desu'." },
           { type: 'multiple_choice', question: "How do you state your nationality if you are from Italy (Itaria)?", options: ["Itaria desu", "Watashi wa Itaria", "Itaria jin desu"], optionsKana: ["イタリアです", "わたしはイタリア", "イタリアじんです"], answer: 2, conceptTag: "Nationality", feedback_incorrect: "Add 'jin' (person) after the country name! Itaria-jin desu." },
           { type: 'listen', question: "What is this person's nationality?", audioKana: "アメリカじんです", options: ["British", "American", "Australian"], answer: 1, conceptTag: "Listening Comp", feedback_incorrect: "They said 'Amerika jin' (American)." },
           { type: 'multiple_choice', question: "What is the crucial phrase to say at the end of an introduction?", options: ["Arigatou", "Sumimasen", "Yoroshiku onegaishimasu"], optionsKana: ["ありがとう", "すみません", "よろしくおねがいします"], answer: 2, conceptTag: "Culture", feedback_incorrect: "'Yoroshiku onegaishimasu' is essential for building good relations." },
           { type: 'speak', question: "Say 'Nice to meet you / Treat me well' (Polite)", expectedRomaji: ["yoroshiku onegaishimasu", "yoroshikuonegaishimasu"], expectedKana: ["よろしくおねがいします"], conceptTag: "Pronunciation", feedback_incorrect: "Yoroshiku o-ne-gai-shi-ma-su." },
           { type: 'listen', question: "What fact is this person stating?", audioKana: "がくせいです", options: ["I am Maria", "I am a student", "Nice to meet you"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Gakusei = Student." },
           { type: 'speak', question: "State simply: '(I) am Italian.' (Itaria jin)", expectedRomaji: ["itaria jin desu", "itariajindesu"], expectedKana: ["イタリアじんです"], conceptTag: "Speaking", feedback_incorrect: "Say 'Itaria jin desu'." },
-          { type: 'listen', question: "Listen to the full intro. Who is this?", audioKana: "わたしはジョンです", options: ["Maria", "John", "Anna"], answer: 1, conceptTag: "Listening", feedback_incorrect: "They said 'Watashi wa Jon (John) desu'." }
+          { type: 'conversation', context: "Meeting a colleague for the first time.", question: "What is the best sequence?", options: ["Watashi wa Tom desu. Yoroshiku onegaishimasu.", "Arigatou. Tom desu.", "Itadakimasu. Tom jin desu."], optionsKana: ["わたしはトムです。よろしくおねがいします。", "ありがとう。トムです。", "いただきます。トムじんです。"], answer: 0, conceptTag: "Full Intro", feedback_incorrect: "Name + Yoroshiku is the golden rule." },
+          { type: 'listen', question: "Listen to the full intro. Who is this?", audioKana: "わたしはジョンです", options: ["Maria", "John", "Anna"], answer: 1, conceptTag: "Listening", feedback_incorrect: "They said 'Watashi wa Jon (John) desu'." },
+          { type: 'speak', question: "Ask someone: 'What is your name?'", expectedRomaji: ["onamae wa", "onamaewa"], expectedKana: ["おなまえは？", "おなまえは"], conceptTag: "Asking Info", feedback_incorrect: "Say 'O-na-ma-e wa?'" },
+          { type: 'multiple_choice', question: "True or False: You MUST say 'Watashi wa' before every single sentence.", options: ["True", "False"], optionsKana: ["", ""], answer: 1, conceptTag: "Grammar Nuance", feedback_incorrect: "False. Drop it when the context is obvious!" },
+          { type: 'listen', question: "What is this person's job?", audioKana: "エンジニアです", options: ["Student", "Engineer", "Doctor"], answer: 1, conceptTag: "Job Vocab", feedback_incorrect: "Enjinia = Engineer." }
         ]
       },
       {
@@ -186,12 +208,13 @@
         title: "Where is the...? 📍",
         topic: "Locations & Directions",
         theory: {
-          intro: "You're in Tokyo, and you need the bathroom. Fast. Today is about finding things.",
-          concept: "To ask a question, add the magic particle 'ka' at the end. To ask where something is: [Place] wa doko desu ka?",
+          intro: "You're in Tokyo, and you need the bathroom. Fast. Today is about finding things and navigating streets.",
+          concept: "To ask a question, add the magic particle 'ka'. To ask where something is: [Place] wa doko desu ka?",
           examples: [
             { kana: "トイレはどこですか", romaji: "Toire wa doko desu ka?", eng: "Where is the bathroom?", context: "Toire = Toilet 🚽" },
             { kana: "えきはどこですか", romaji: "Eki wa doko desu ka?", eng: "Where is the station?", context: "Eki = Station 🚉" },
-            { kana: "コンビニはどこですか", romaji: "Konbini wa doko desu ka?", eng: "Where is the convenience store?", context: "Konbini is your lifeline in Japan. 🏪" }
+            { kana: "コンビニ", romaji: "Konbini", eng: "Convenience store", context: "Your lifeline in Japan. 🏪" },
+            { kana: "みぎ / ひだり / まっすぐ", romaji: "Migi / Hidari / Massugu", eng: "Right / Left / Straight", context: "Key direction words. ➡️" }
           ],
           culture: "Instead of pointing with one finger (which is rude), Japanese people use their whole open hand, palm facing up, to gesture toward a place."
         },
@@ -199,36 +222,47 @@
           { type: 'listen', question: "What is this person looking for?", audioKana: "えきはどこですか", options: ["The bathroom", "The train station", "A restaurant"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Listen for 'Eki' (Station)." },
           { type: 'speak', question: "Ask: 'Where is the bathroom?'", expectedRomaji: ["toire wa doko desu ka", "toirewadokodesuka"], expectedKana: ["トイレはどこですか"], conceptTag: "Speaking Survival", feedback_incorrect: "Say: 'Toire wa doko desu ka?'" },
           { type: 'multiple_choice', question: "How do you ask 'Where is the convenience store?'", options: ["Konbini doko wa desu ka?", "Konbini wa doko desu ka?", "Doko wa konbini desu ka?"], optionsKana: ["コンビニどこはですか", "コンビニはどこですか", "どこはコンビニですか"], answer: 1, conceptTag: "Sentence Structure", feedback_incorrect: "The formula is [Place] + wa + doko + desu ka." },
+          { type: 'conversation', context: "👮 Police Officer: Massugu desu. (It is straight ahead.)", question: "What direction did they give?", options: ["Right", "Left", "Straight ahead"], optionsKana: ["みぎ", "ひだり", "まっすぐ"], answer: 2, conceptTag: "Directions", feedback_incorrect: "Massugu means straight." },
           { type: 'listen', question: "What place is this?", audioKana: "コンビニ", options: ["Hotel", "Station", "Convenience Store"], answer: 2, conceptTag: "Vocab", feedback_incorrect: "Konbini = Convenience Store." },
           { type: 'speak', question: "Ask: 'Where is the hotel?' (Hoteru)", expectedRomaji: ["hoteru wa doko desu ka"], expectedKana: ["ホテルはどこですか"], conceptTag: "Speaking", feedback_incorrect: "Say 'Hoteru wa doko desu ka?'" },
           { type: 'multiple_choice', question: "What particle turns a statement into a question?", options: ["Wa", "Ni", "Ka"], optionsKana: ["は", "に", "か"], answer: 2, conceptTag: "Grammar", feedback_incorrect: "Adding 'ka' to the end of a sentence makes it a question." },
           { type: 'speak', question: "Say the word for 'Train Station'", expectedRomaji: ["eki"], expectedKana: ["えき"], conceptTag: "Vocab", feedback_incorrect: "Say 'Eki'." },
-          { type: 'speak', question: "Ask: 'Where is the station?'", expectedRomaji: ["eki wa doko desu ka"], expectedKana: ["えきはどこですか"], conceptTag: "Fluency", feedback_incorrect: "Eki wa doko desu ka?" }
+          { type: 'conversation', context: "You need to ask a stranger for directions.", question: "How should you start the sentence?", options: ["Oyasuminasai...", "Sumimasen...", "Yoroshiku..."], optionsKana: ["おやすみなさい...", "すみません...", "よろしく..."], answer: 1, conceptTag: "Manners", feedback_incorrect: "Always start with 'Sumimasen' (Excuse me) to be polite." },
+          { type: 'multiple_choice', question: "Which word means 'Right'?", options: ["Hidari", "Migi", "Massugu"], optionsKana: ["ひだり", "みぎ", "まっすぐ"], answer: 1, conceptTag: "Directions", feedback_incorrect: "Migi = Right." },
+          { type: 'listen', question: "Listen to the direction:", audioKana: "ひだりです", options: ["It's right", "It's left", "It's straight"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Hidari means Left." },
+          { type: 'speak', question: "Ask: 'Where is the station?'", expectedRomaji: ["eki wa doko desu ka"], expectedKana: ["えきはどこですか"], conceptTag: "Fluency", feedback_incorrect: "Eki wa doko desu ka?" },
+          { type: 'multiple_choice', question: "How should you gesture to show a direction?", options: ["Index finger", "Thumb", "Open hand, palm up"], optionsKana: ["", "", ""], answer: 2, conceptTag: "Culture", feedback_incorrect: "Open hand is polite." },
+          { type: 'speak', question: "Say 'Straight ahead'", expectedRomaji: ["massugu"], expectedKana: ["まっすぐ"], conceptTag: "Pronunciation", feedback_incorrect: "Mas-su-gu." }
         ]
       },
       {
         day: 4,
-        title: "I Don't Know! 🤷‍♂️",
+        title: "Survival Phrases 🆘",
         topic: "Agreements & Survival",
         theory: {
-          intro: "Let's learn how to agree, disagree politely, and the most important survival phrase when you are confused.",
-          concept: "'Hai' is Yes, and 'Iie' is No. However, Japanese people rarely say a direct 'No'. Also, 'Wakarimasen' will save you when someone speaks too fast.",
+          intro: "Let's learn how to agree, politely disagree, and the ultimate survival phrases when you are confused.",
+          concept: "'Hai' is Yes, and 'Iie' is No. However, Japanese people rarely say a direct 'No'. 'Wakarimasen' is your shield when language gets too hard.",
           examples: [
             { kana: "はい、そうです", romaji: "Hai, sou desu.", eng: "Yes, that is correct.", context: "Polite agreement. ⭕" },
-            { kana: "いいえ、ちがいます", romaji: "Iie, chigaimasu.", eng: "No, that is wrong.", context: "Direct disagreement. ❌" },
+            { kana: "だいじょうぶです", romaji: "Daijoubu desu.", eng: "I'm okay / No thank you.", context: "Used constantly to refuse things like plastic bags. 🛑" },
             { kana: "ちょっと...", romaji: "Chotto...", eng: "It's a little bit...", context: "The polite way to decline an invitation. 😅" },
-            { kana: "わかりません", romaji: "Wakarimasen", eng: "I don't understand / I don't know", context: "Crucial! Use this instead of smiling and nodding. 😵" }
+            { kana: "わかりません", romaji: "Wakarimasen", eng: "I don't understand", context: "Crucial! Use this instead of smiling and nodding. 😵" },
+            { kana: "えいごをはなせますか", romaji: "Eigo o hanasemasu ka?", eng: "Can you speak English?", context: "Ask this before defaulting to English. 🇬🇧" }
           ],
-          culture: "If someone invites you out and you can't go, just sucking air through your teeth and saying 'Chotto...' is the polite way to say no!"
+          culture: "If someone invites you out and you can't go, sucking air through your teeth and saying 'Chotto...' is the polite way to say no!"
         },
         exercises: [
           { type: 'multiple_choice', question: "What is the most polite way to reject an invitation?", options: ["Iie!", "Chigaimasu!", "Chotto..."], optionsKana: ["いいえ！", "ちがいます！", "ちょっと..."], answer: 2, conceptTag: "Cultural Nuance", feedback_incorrect: "Directly saying 'Iie' is too harsh. 'Chotto...' leaves it trailing and polite." },
+          { type: 'conversation', context: "🏪 Cashier: Fukuro (bag) wa irimasu ka?", question: "You brought your own bag. How do you say 'I'm fine / No thanks'?", options: ["Hai, sou desu", "Daijoubu desu", "Wakarimasen"], optionsKana: ["はい、そうです", "だいじょうぶです", "わかりません"], answer: 1, conceptTag: "Refusing", feedback_incorrect: "'Daijoubu desu' is perfect for saying 'I'm good/No thanks'." },
           { type: 'speak', question: "Say 'Yes, that is right.'", expectedRomaji: ["hai sou desu", "haisoudesu"], expectedKana: ["はいそうです", "はい、そうです"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Hai, sou desu'." },
           { type: 'multiple_choice', question: "A local starts speaking rapid Japanese to you. What should you say?", options: ["Hai, sou desu", "Wakarimasen", "Arigatou"], optionsKana: ["はい、そうです", "わかりません", "ありがとう"], answer: 1, conceptTag: "Survival", feedback_incorrect: "'Wakarimasen' means 'I don't understand'." },
           { type: 'listen', question: "What does this mean?", audioKana: "わかりません", options: ["I don't understand", "Where is it?", "Thank you"], answer: 0, conceptTag: "Listening", feedback_incorrect: "Wakarimasen = I don't understand / I don't know." },
           { type: 'speak', question: "Ask: 'Can you speak English?' (Eigo o hanasemasu ka?)", expectedRomaji: ["eigo o hanasemasu ka", "eigoohanasemasuka"], expectedKana: ["えいごをはなせますか"], conceptTag: "Speaking", feedback_incorrect: "Say: Eigo o hanasemasu ka?" },
           { type: 'multiple_choice', question: "If someone asks 'Are you American?' and you are British, how do you politely say 'No, that's wrong'?", options: ["Iie, chigaimasu", "Hai, sou desu", "Chotto..."], optionsKana: ["いいえ、ちがいます", "はい、そうです", "ちょっと..."], answer: 0, conceptTag: "Disagreement", feedback_incorrect: "'Iie, chigaimasu' means 'No, that's incorrect/different'." },
-          { type: 'speak', question: "Say 'I don't understand/know'.", expectedRomaji: ["wakarimasen"], expectedKana: ["わかりません"], conceptTag: "Speaking", feedback_incorrect: "Wa-ka-ri-ma-sen." },
+          { type: 'listen', question: "What is the cashier asking?", audioKana: "えいごをはなせますか", options: ["Do you want a bag?", "Can you speak English?", "How much is it?"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Eigo = English." },
+          { type: 'speak', question: "Say 'I don't understand'.", expectedRomaji: ["wakarimasen"], expectedKana: ["わかりません"], conceptTag: "Speaking", feedback_incorrect: "Wa-ka-ri-ma-sen." },
+          { type: 'conversation', context: "Your Japanese friend asks if you want to eat Natto (fermented beans), but you hate it.", question: "What's a soft, polite way to decline?", options: ["Iie!", "Chotto...", "Hai, sou desu"], optionsKana: ["いいえ！", "ちょっと...", "はい、そうです"], answer: 1, conceptTag: "Refusing Softly", feedback_incorrect: "'Chotto...' implies it's 'a bit difficult' for you." },
+          { type: 'speak', question: "Say 'I'm okay / No thanks'.", expectedRomaji: ["daijoubu desu", "daijoubudesu"], expectedKana: ["だいじょうぶです"], conceptTag: "Fluency", feedback_incorrect: "Dai-jou-bu desu." },
           { type: 'speak', question: "Say 'No, that is incorrect.'", expectedRomaji: ["iie chigaimasu"], expectedKana: ["いいえ、ちがいます", "いいえちがいます"], conceptTag: "Fluency", feedback_incorrect: "Iie, chigaimasu." }
         ]
       },
@@ -244,49 +278,56 @@
             { kana: "いくらですか", romaji: "Ikura desu ka?", eng: "How much is it?", context: "Essential for shopping. 💴" },
             { kana: "おいしい", romaji: "Oishii", eng: "Delicious (Polite/Standard)", context: "Say this to the chef or waiter to make them happy. 😋" },
             { kana: "うまい", romaji: "Umai", eng: "Delicious (Casual/Masculine)", context: "Used more often by guys in casual settings. 🍜" },
-            { kana: "みずをおねがいします", romaji: "Mizu o onegaishimasu.", eng: "Water, please.", context: "Mizu = Water. 💧" }
+            { kana: "おかいけい", romaji: "Okaikei", eng: "The bill / check", context: "Say 'Okaikei onegaishimasu' to pay. 🧾" }
           ],
           culture: "You don't need to tip in Japan! In fact, leaving money on the table will result in the waiter chasing you down the street to return it. If the food is good, just say 'Oishii!'"
         },
         exercises: [
           { type: 'multiple_choice', question: "How do you ask 'How much is it?'", options: ["Ikura desu ka?", "Doko desu ka?", "Kore kudasai?"], optionsKana: ["いくらですか", "どこですか", "これください"], answer: 0, conceptTag: "Shopping", feedback_incorrect: "'Ikura desu ka' is the phrase for asking the price." },
+          { type: 'conversation', context: "You are looking at a menu in a Tokyo cafe.", question: "You point to a picture of Matcha cake. What do you say?", options: ["Kore o kudasai", "Ikura desu ka", "Oishii desu"], optionsKana: ["これをください", "いくらですか", "おいしいです"], answer: 0, conceptTag: "Ordering", feedback_incorrect: "'Kore o kudasai' means 'This please'." },
           { type: 'listen', question: "What is the customer asking?", audioKana: "いくらですか", options: ["Where is it?", "How much is it?", "Is it delicious?"], answer: 1, conceptTag: "Listening Comp", feedback_incorrect: "They asked 'Ikura desu ka?' (How much?)." },
           { type: 'speak', question: "Point at an item and say 'This, please.' (Kore = this)", expectedRomaji: ["kore o kudasai", "koreokudasai"], expectedKana: ["これをください"], conceptTag: "Ordering", feedback_incorrect: "Say 'Kore o kudasai'." },
-          { type: 'multiple_choice', question: "You want to say the food is delicious in a standard, polite way. What do you say?", options: ["Umai!", "Oishii!", "Sugoi!"], optionsKana: ["うまい！", "おいしい！", "すごい！"], answer: 1, conceptTag: "Vocab", feedback_incorrect: "'Oishii' is the standard, polite word for delicious. 'Umai' is casual." },
+          { type: 'multiple_choice', question: "You want to say the food is delicious in a standard, polite way. What do you say?", options: ["Umai!", "Oishii!", "Sugoi!"], optionsKana: ["うまい！", "おいしい！", "すごい！"], answer: 1, conceptTag: "Vocab", feedback_incorrect: "'Oishii' is the standard, polite word for delicious." },
           { type: 'speak', question: "Say 'Delicious!' (Standard/Polite)", expectedRomaji: ["oishii", "oishi"], expectedKana: ["おいしい"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'O-i-shi-i'." },
-          { type: 'multiple_choice', question: "What is 'Umai'?", options: ["Water", "A casual way to say delicious", "Excuse me"], answer: 1, conceptTag: "Vocab Nuance", feedback_incorrect: "'Umai' means delicious or skillful, used mostly in casual settings (often by men)." },
+          { type: 'multiple_choice', question: "What is 'Umai'?", options: ["Water", "A casual way to say delicious", "Excuse me"], optionsKana: ["", "", ""], answer: 1, conceptTag: "Vocab Nuance", feedback_incorrect: "'Umai' means delicious or skillful, used mostly in casual settings." },
+          { type: 'conversation', context: "You finished eating and want to pay.", question: "What should you say?", options: ["Oishii desu", "Okaikei onegaishimasu", "Toire wa doko desu ka"], optionsKana: ["おいしいです", "おかいけいおねがいします", "トイレはどこですか"], answer: 1, conceptTag: "Paying", feedback_incorrect: "'Okaikei' means the bill." },
           { type: 'listen', question: "What is the customer ordering?", audioKana: "みずをおねがいします", options: ["Water", "The bill", "This menu item"], answer: 0, conceptTag: "Listening", feedback_incorrect: "'Mizu' means water." },
           { type: 'speak', question: "Ask for water: 'Water, please.'", expectedRomaji: ["mizu o onegaishimasu", "mizu onegaishimasu"], expectedKana: ["みずをおねがいします"], conceptTag: "Ordering", feedback_incorrect: "Mizu o onegaishimasu." },
+          { type: 'multiple_choice', question: "Should you tip the waiter if the food is very 'Oishii'?", options: ["Yes, 15%", "No, tipping is not practiced"], optionsKana: ["", ""], answer: 1, conceptTag: "Culture", feedback_incorrect: "No tipping in Japan! Just giving a sincere 'Oishii' is the best tip." },
+          { type: 'speak', question: "Ask for the bill: 'Okaikei onegaishimasu'", expectedRomaji: ["okaikei onegaishimasu", "okaikei"], expectedKana: ["おかいけいおねがいします"], conceptTag: "Fluency", feedback_incorrect: "O-kai-kei o-ne-gai-shi-ma-su." },
           { type: 'speak', question: "Ask 'How much is it?'", expectedRomaji: ["ikura desu ka", "ikuradesuka"], expectedKana: ["いくらですか"], conceptTag: "Fluency", feedback_incorrect: "I-ku-ra de-su ka?" }
         ]
       }
     ];
 
-    // Procedural Generator for Days 6-30
+    // Procedural Generator for Days 6-30 (Expanded to 20 exercises for 25-30min playtime)
     const generateFullMonth = () => {
       const fullCourse = [...DETAILED_LESSONS];
       const topics = [
-        { name: "Numbers & Money 💴", phraseKana: "ひゃくえん", phraseRomaji: "Hyaku en", phraseEng: "100 Yen" },
-        { name: "Time & Scheduling ⏰", phraseKana: "いまなんじですか", phraseRomaji: "Ima nanji desu ka", phraseEng: "What time is it now?" },
-        { name: "Train Travel 🚄", phraseKana: "きっぷ", phraseRomaji: "Kippu", phraseEng: "Ticket" },
-        { name: "Hobbies & Fun 🎮", phraseKana: "たのしい", phraseRomaji: "Tanoshii", phraseEng: "Fun / Enjoyable" },
-        { name: "Describing Things 🏔️", phraseKana: "おおきい", phraseRomaji: "Ookii", phraseEng: "Big" },
-        { name: "Weather Chat ☀️", phraseKana: "あついですね", phraseRomaji: "Atsui desu ne", phraseEng: "It's hot, isn't it?" },
-        { name: "Expressing Feelings 💖", phraseKana: "うれしい", phraseRomaji: "Ureshii", phraseEng: "Happy / Glad" },
-        { name: "Emergencies 🚨", phraseKana: "たすけて", phraseRomaji: "Tasukete", phraseEng: "Help me" }
+        { name: "Numbers & Money 💴", phraseKana: "ひゃくえん", phraseRomaji: "Hyaku en", phraseEng: "100 Yen", scenario: "Cashier says it costs 100 yen." },
+        { name: "Time & Scheduling ⏰", phraseKana: "いまなんじですか", phraseRomaji: "Ima nanji desu ka", phraseEng: "What time is it now?", scenario: "You are running late for the Shinkansen." },
+        { name: "Train Transfers 🚄", phraseKana: "のりかえ", phraseRomaji: "Norikae", phraseEng: "Transfer (trains)", scenario: "You are lost in Shinjuku station." },
+        { name: "Making Friends 📱", phraseKana: "ラインやってる？", phraseRomaji: "Line yatteru?", phraseEng: "Do you have LINE?", scenario: "You met a cool local at a cafe." },
+        { name: "Shopping Sizes 👕", phraseKana: "おおきい", phraseRomaji: "Ookii", phraseEng: "Big", scenario: "Trying on a shirt in Harajuku." },
+        { name: "Izakaya Night 🍻", phraseKana: "とりあえずなま！", phraseRomaji: "Toriaezu Nama!", phraseEng: "Draft beer for now!", scenario: "Sitting down at a lively Izakaya." },
+        { name: "Expressing Feelings 💖", phraseKana: "うれしい", phraseRomaji: "Ureshii", phraseEng: "Happy / Glad", scenario: "Someone gives you a gift." },
+        { name: "Emergencies 🚨", phraseKana: "たすけて", phraseRomaji: "Tasukete", phraseEng: "Help me", scenario: "You dropped your passport." },
+        { name: "Food Allergies 🥜", phraseKana: "にくはだめです", phraseRomaji: "Niku wa dame desu", phraseEng: "No meat / Meat is bad", scenario: "Explaining dietary limits." },
+        { name: "Weekend Plans 🗓️", phraseKana: "しゅうまつは？", phraseRomaji: "Shuumatsu wa?", phraseEng: "What about the weekend?", scenario: "Making plans with a friend." }
       ];
       
       for (let i = DETAILED_LESSONS.length + 1; i <= 30; i++) {
         const t = topics[i % topics.length];
         
-        // Generate 12 varied exercises per day
-        const dailyExercises = Array.from({ length: 12 }, (_, index) => {
-          const typeNum = index % 4;
+        // Generate 20 varied exercises per day for a solid 25-30 minute session
+        const dailyExercises = Array.from({ length: 20 }, (_, index) => {
+          const typeNum = index % 5;
           if (typeNum === 0) {
             return { 
               type: 'multiple_choice', 
               question: `Vocabulary Check: What does "${t.phraseRomaji}" mean?`, 
               options: [t.phraseEng, "I don't know", "Where is the station?"], 
+              optionsKana: [t.phraseKana, "わかりません", "えきはどこですか"],
               answer: 0, 
               conceptTag: `Vocab Expansion` 
             };
@@ -308,6 +349,16 @@
               conceptTag: "Speaking Check", 
               feedback_incorrect: `Try saying '${t.phraseRomaji}' clearly.` 
             };
+          } else if (typeNum === 3) {
+            return {
+              type: 'conversation',
+              context: `Scenario: ${t.scenario}`,
+              question: `What is the most appropriate thing to say?`,
+              options: [t.phraseRomaji, "Sumimasen", "Toire wa doko desu ka?"],
+              optionsKana: [t.phraseKana, "すみません", "トイレはどこですか"],
+              answer: 0,
+              conceptTag: "Application"
+            };
           } else {
             return {
               type: 'multiple_choice',
@@ -325,12 +376,12 @@
           title: `Day ${i}: ${t.name}`,
           topic: t.name.split(' ')[0],
           theory: {
-            intro: `Welcome to Day ${i}. Today we expand your conversational ability regarding ${t.name}. This session requires 15-20 minutes of focus.`,
+            intro: `Welcome to Day ${i}. Today we expand your conversational ability regarding ${t.name}. This extended session requires 25-30 minutes of focus.`,
             concept: "Translating full thoughts and repetitive speaking builds true fluency. Read the phrase below and practice saying it out loud before starting.",
             examples: [
               { kana: t.phraseKana, romaji: t.phraseRomaji, eng: t.phraseEng, context: "Daily Focus Phrase ✨" }
             ],
-            culture: "Consistency is more important than intensity. Doing these exercises every single day will wire your brain for Japanese naturally."
+            culture: "Consistency is more important than intensity. Doing these 20 exercises today will wire your brain for Japanese naturally."
           },
           exercises: dailyExercises
         });
@@ -348,7 +399,8 @@
           { kana: "わかりません", romaji: "Wakarimasen", eng: "I don't understand / I don't know", context: "Crucial! Use this instead of smiling and nodding when lost." },
           { kana: "すみません", romaji: "Sumimasen", eng: "Excuse me / Sorry", context: "Use to get attention, apologize, or say a quick thanks." },
           { kana: "えいごをはなせますか", romaji: "Eigo o hanasemasu ka?", eng: "Can you speak English?", context: "Ask this before defaulting to English." },
-          { kana: "はい / いいえ", romaji: "Hai / Iie", eng: "Yes / No", context: "Japanese people rarely say a blunt 'Iie' (No). Use 'Chotto...' to decline politely." }
+          { kana: "はい / いいえ", romaji: "Hai / Iie", eng: "Yes / No", context: "Japanese people rarely say a blunt 'Iie' (No). Use 'Chotto...' to decline politely." },
+          { kana: "だいじょうぶです", romaji: "Daijoubu desu", eng: "I'm okay / No thanks", context: "Perfect for declining a plastic bag or receipt." }
         ]
       },
       {
@@ -366,7 +418,8 @@
         items: [
           { kana: "すごい！", romaji: "Sugoi!", eng: "Amazing! / Great!", context: "The ultimate reaction word. Use it when impressed by anything." },
           { kana: "かわいい！", romaji: "Kawaii!", eng: "Cute!", context: "Used to describe fashion, items, animals, or people. A staple of pop culture." },
-          { kana: "ほんとう？", romaji: "Hontou?", eng: "Really?", context: "Use this to show active listening during a conversation." }
+          { kana: "ほんとう？", romaji: "Hontou?", eng: "Really?", context: "Use this to show active listening during a conversation." },
+          { kana: "なるほど", romaji: "Naruhodo", eng: "I see / Makes sense", context: "Say this when you understand what someone is explaining to you." }
         ]
       },
       {
@@ -525,7 +578,6 @@
       renderApp();
 
       try {
-        // Deep parsing of Google Translate free API to ensure Romaji is extracted
         const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&dt=rm&q=${encodeURIComponent(text)}`;
         const res = await fetch(url);
         const data = await res.json();
@@ -535,11 +587,9 @@
 
         if (data && data[0]) {
             data[0].forEach(item => {
-                // Japanese Kana/Kanji part
                 if (item[0] && typeof item[0] === 'string' && item[0] !== "null" && !item[0].match(/^[a-zA-Z\s]+$/)) {
                     jpText += item[0];
                 }
-                // Romaji part is often in index 2 or 3
                 if (item[2] && typeof item[2] === 'string' && /^[a-zA-Zāēīōūōōuu\-\s\']+$/i.test(item[2])) {
                     romajiText += item[2];
                 } else if (item[3] && typeof item[3] === 'string' && /^[a-zA-Zāēīōūōōuu\-\s\']+$/i.test(item[3])) {
@@ -547,7 +597,6 @@
                 }
             });
             
-            // Fallback if parsing failed but it exists at the end of the array
             if(!romajiText && data[0].length > 1) {
                 const lastEl = data[0][data[0].length - 1];
                 if(lastEl && typeof lastEl[2] === 'string') romajiText = lastEl[2];
@@ -579,13 +628,14 @@
 
         // Center on Japan
         myMap = L.map('japan-map', {
-            zoomControl: false // Customizing UI
+            zoomControl: false,
+            scrollWheelZoom: false // Prevent accidental scrolling over map on mobile
         }).setView([37.5, 137.5], 5);
         
         L.control.zoom({ position: 'topright' }).addTo(myMap);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attribution: '&copy; OpenStreetMap',
             className: 'map-tiles'
         }).addTo(myMap);
 
@@ -801,7 +851,6 @@
       `;
       lucide.createIcons();
 
-      // Trigger map initialization after DOM update
       if (state.currentView === 'explore') {
           setTimeout(window.initMap, 50);
       }
@@ -833,27 +882,32 @@
     };
 
     const renderDashboard = () => {
+      const totalProgress = Math.min((state.completedDays.length / 30) * 100, 100);
+
       let html = `
       <div class="max-w-4xl mx-auto pb-20 relative">
         <div class="kanji-watermark">旅</div>
         
-        <header class="bg-gradient-to-br from-rose-400 to-orange-400 text-white rounded-[2rem] p-8 md:p-10 mb-10 japanese-shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
+        <header class="bg-gradient-to-br from-rose-400 to-orange-400 text-white rounded-[2rem] p-8 md:p-10 mb-8 japanese-shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
           <div class="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
              <i data-lucide="sun" class="w-48 h-48"></i>
           </div>
           <div class="z-10">
             <h1 class="text-4xl md:text-5xl font-black mb-3 tracking-tight">Konnichi-WOW! 🌸</h1>
-            <p class="text-rose-50 text-xl font-bold">Your 30-Day Path to Conversational Japanese.</p>
+            <p class="text-rose-50 text-xl font-bold mb-4">Your 30-Day Path to Conversational Japanese.</p>
+            
+            <!-- Global Progress Bar -->
+            <div class="w-full max-w-md bg-white/20 h-4 rounded-full overflow-hidden backdrop-blur-sm border border-white/30">
+               <div class="bg-white h-full transition-all duration-1000" style="width: ${totalProgress}%"></div>
+            </div>
+            <p class="text-sm font-bold mt-2">${Math.round(totalProgress)}% Fluency Unlocked</p>
+
           </div>
           <div class="flex gap-4 w-full md:w-auto z-10">
             <div class="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 p-4 rounded-2xl backdrop-blur-md border border-white/20 shadow-inner">
               <i data-lucide="award" class="text-yellow-300 mb-1 w-8 h-8"></i>
               <span class="font-black text-sm">${state.completedDays.length} / 30 Days</span>
             </div>
-            <button onclick="window.changeView('profile')" class="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 hover:bg-white/30 transition p-4 rounded-2xl backdrop-blur-md border border-white/20 shadow-inner">
-              <i data-lucide="user" class="text-white mb-1 w-8 h-8"></i>
-              <span class="font-black text-sm truncate max-w-[80px]">${state.profileName}</span>
-            </button>
           </div>
         </header>
 
@@ -863,7 +917,7 @@
               <i data-lucide="map" class="text-rose-400 w-8 h-8"></i> Syllabus Map 🗺️
             </h2>
           </div>
-          <p class="text-gray-500 mb-10 font-bold text-lg">Dedicate 15 minutes daily. Auto-save is active.</p>
+          <p class="text-gray-500 mb-10 font-bold text-lg">Dedicate 25-30 minutes daily. Auto-save is active.</p>
 
           <div class="space-y-8 relative before:absolute before:inset-0 before:ml-6 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1.5 before:bg-gradient-to-b before:from-rose-200 before:via-orange-200 before:to-gray-200 before:rounded-full">
       `;
@@ -901,6 +955,7 @@
                 <div class="flex-1">
                   <span class="text-[11px] font-black text-rose-500 uppercase tracking-widest block mb-1">${dayData.topic}</span>
                   <h3 class="font-black text-gray-800 leading-tight mb-3 text-xl">${dayData.title}</h3>
+                  <p class="text-xs text-gray-400 font-bold mb-2">${dayData.exercises.length} Exercises (~25 mins)</p>
                   <div class="flex flex-wrap gap-2 mt-2">${badgeHtml}</div>
                 </div>
                 ${btnHtml}
@@ -1037,14 +1092,35 @@
       const isAnswered = state.selectedAnswer !== null;
       
       let isCorrect = false;
-      if (exercise.type === 'multiple_choice' || exercise.type === 'listen') isCorrect = isAnswered && state.selectedAnswer === exercise.answer;
-      else if (exercise.type === 'speak') isCorrect = isAnswered && state.selectedAnswer === true;
+      if (exercise.type === 'multiple_choice' || exercise.type === 'listen' || exercise.type === 'conversation') {
+        isCorrect = isAnswered && state.selectedAnswer === exercise.answer;
+      } else if (exercise.type === 'speak') {
+        isCorrect = isAnswered && state.selectedAnswer === true;
+      }
 
       const progressWidth = (state.gameStep / lesson.exercises.length) * 100;
-      const typeLabel = exercise.type === 'speak' ? 'Speaking Exercise 🎙️' : exercise.type === 'listen' ? 'Listening Check 🎧' : 'Translation Challenge 🧠';
+      
+      let typeLabel = 'Knowledge Check';
+      let typeIcon = 'brain';
+      if(exercise.type === 'speak') { typeLabel = 'Speaking Exercise'; typeIcon = 'mic'; }
+      else if(exercise.type === 'listen') { typeLabel = 'Listening Check'; typeIcon = 'headphones'; }
+      else if(exercise.type === 'conversation') { typeLabel = 'Real-Life Scenario'; typeIcon = 'message-square'; }
 
       let exerciseHtml = '';
-      if (exercise.type === 'multiple_choice' || exercise.type === 'listen') {
+
+      // Conversation Scenario Context Rendering
+      let contextHtml = '';
+      if (exercise.type === 'conversation' && exercise.context) {
+        contextHtml = `
+          <div class="mb-10 w-full flex justify-start">
+            <div class="chat-bubble bg-indigo-50 border-2 border-indigo-100 p-6 rounded-2xl rounded-bl-none shadow-sm relative w-11/12 md:w-3/4">
+              <p class="text-indigo-900 font-bold text-lg">${exercise.context}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      if (exercise.type === 'multiple_choice' || exercise.type === 'listen' || exercise.type === 'conversation') {
         exerciseHtml = `<div class="space-y-5">` + exercise.options.map((opt, i) => {
           let btnClass = "bg-white border-2 border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50";
           let iconHtml = '';
@@ -1125,8 +1201,8 @@
         <div class="bg-white rounded-[2.5rem] japanese-shadow p-6 md:p-12 min-h-[550px] flex flex-col border border-gray-50 relative overflow-hidden">
           <div class="flex-grow z-10">
             <div class="flex justify-center mb-10">
-               <span class="bg-indigo-50 text-indigo-700 text-sm font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-sm border border-indigo-100">
-                 ${typeLabel}
+               <span class="bg-indigo-50 text-indigo-700 text-sm font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-sm border border-indigo-100 flex items-center gap-2">
+                 <i data-lucide="${typeIcon}" class="w-4 h-4"></i> ${typeLabel}
                </span>
             </div>
 
@@ -1137,6 +1213,8 @@
                 </button>
               </div>
             ` : ''}
+
+            ${contextHtml}
             
             <h2 class="text-3xl md:text-4xl font-black text-gray-800 mb-12 text-center leading-snug">
               ${exercise.question}
