@@ -31,10 +31,16 @@
     import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+    // SMART FALLBACK: Check if we are in the canvas environment or on GitHub pages
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    const useFirebase = Object.keys(firebaseConfig).length > 0;
+    
+    let app, auth, db;
+    if (useFirebase) {
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+    }
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
     // --- DATA & SYLLABUS ---
@@ -288,10 +294,31 @@
       currentMistakes: []
     };
 
-    // --- FIREBASE LOGIC ---
+    // --- LOGIC & LOCAL FALLBACK ---
     let unsubscribeSnapshot = null;
 
+    const loadLocalProgress = () => {
+      try {
+        const saved = localStorage.getItem('konnichi_save');
+        if (saved) {
+          const data = JSON.parse(saved);
+          state.completedDays = data.completedDays || [];
+          state.mistakesRecord = data.mistakesRecord || {};
+          if (data.profileName) state.profileName = data.profileName;
+        }
+      } catch(e) { console.error("Local storage error", e); }
+    };
+
     const initAuth = async () => {
+      if (!useFirebase) {
+        // Fallback for Github Pages / Local HTML
+        state.user = { uid: 'local-user' };
+        state.isAuthLoading = false;
+        loadLocalProgress();
+        renderApp();
+        return;
+      }
+
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
@@ -300,43 +327,57 @@
         }
       } catch (error) {
         console.error("Auth error:", error);
+        // Fallback if network is blocked
+        state.user = { uid: 'local-user' };
+        state.isAuthLoading = false;
+        loadLocalProgress();
+        renderApp();
       }
     };
 
-    onAuthStateChanged(auth, (currentUser) => {
-      state.user = currentUser;
-      state.isAuthLoading = false;
-      renderApp();
+    if (useFirebase) {
+      onAuthStateChanged(auth, (currentUser) => {
+        state.user = currentUser;
+        state.isAuthLoading = false;
+        renderApp();
 
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
+        if (unsubscribeSnapshot) unsubscribeSnapshot();
 
-      if (currentUser) {
-        const userDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data');
-        unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            state.completedDays = data.completedDays || [];
-            state.mistakesRecord = data.mistakesRecord || {};
-            if (data.profileName) state.profileName = data.profileName;
-            // Only re-render if not currently in game to avoid interrupting flow
-            if(state.currentView !== 'game') renderApp();
-          }
-        }, (error) => console.error("Error fetching data:", error));
-      }
-    });
+        if (currentUser) {
+          const userDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data');
+          unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              state.completedDays = data.completedDays || [];
+              state.mistakesRecord = data.mistakesRecord || {};
+              if (data.profileName) state.profileName = data.profileName;
+              if(state.currentView !== 'game') renderApp();
+            }
+          }, (error) => console.error("Error fetching data:", error));
+        }
+      });
+    }
 
     const saveProgress = async (newCompleted, newMistakes) => {
-      if (!state.user) return;
-      try {
-        const userDocRef = doc(db, 'artifacts', appId, 'users', state.user.uid, 'profile', 'data');
-        await setDoc(userDocRef, {
+      if (useFirebase && state.user && state.user.uid !== 'local-user') {
+        try {
+          const userDocRef = doc(db, 'artifacts', appId, 'users', state.user.uid, 'profile', 'data');
+          await setDoc(userDocRef, {
+            completedDays: newCompleted,
+            mistakesRecord: newMistakes,
+            profileName: state.profileName,
+            lastUpdated: new Date().toISOString()
+          }, { merge: true });
+        } catch (e) {
+          console.error("Failed to save:", e);
+        }
+      } else {
+        // Local Save Fallback
+        localStorage.setItem('konnichi_save', JSON.stringify({
           completedDays: newCompleted,
           mistakesRecord: newMistakes,
-          profileName: state.profileName,
-          lastUpdated: new Date().toISOString()
-        }, { merge: true });
-      } catch (e) {
-        console.error("Failed to save:", e);
+          profileName: state.profileName
+        }));
       }
     };
 
@@ -454,13 +495,17 @@
     };
 
     window.handleSwitchAccount = async () => {
-      if (!state.user) return;
       try {
-        await signOut(auth);
+        if (useFirebase && state.user && state.user.uid !== 'local-user') {
+          await signOut(auth);
+        } else {
+          localStorage.removeItem('konnichi_save');
+        }
         state.completedDays = [];
         state.mistakesRecord = {};
         state.profileName = `Learner_${Math.floor(Math.random() * 1000)}`;
         state.currentView = 'dashboard';
+        saveProgress([], {}); // clear local store completely
         renderApp();
       } catch (e) { console.error(e); }
     };
