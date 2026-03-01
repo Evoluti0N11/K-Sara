@@ -1,294 +1,296 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken, signOut } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
-import { 
-  BookOpen, Play, CheckCircle, XCircle, Star, Volume2, 
-  Map, Library, Home, ChevronRight, MessageCircle, Mic, Award,
-  AlertTriangle, RefreshCw, LogOut, User, Utensils, HeartPulse, Smile
-} from 'lucide-react';
-
-// --- FIREBASE SETUP ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-// --- DATA & SYLLABUS (30 DAYS) ---
-// Note: We use 'kana' for the TTS engine to force a Japanese accent, but display 'romaji' for the learner.
-const DETAILED_LESSONS = [
-  {
-    day: 1,
-    title: "First Encounters: The Magic of Greetings",
-    topic: "Greetings",
-    theory: {
-      intro: "Welcome to Day 1! In Japan, greetings are the foundation of respect. The Japanese language shifts based on the time of day and the social status of who you are talking to.",
-      concept: "We will learn the 3 core daily greetings. Notice that morning greetings have a polite suffix ('gozaimasu') that you drop when talking to friends.",
-      examples: [
-        { kana: "おはようございます", romaji: "Ohayou gozaimasu", eng: "Good morning (Polite)", context: "Use until 11:00 AM." },
-        { kana: "こんにちは", romaji: "Konnichiwa", eng: "Good afternoon / Hello", context: "Standard daytime greeting." },
-        { kana: "こんばんは", romaji: "Konbanwa", eng: "Good evening", context: "Use after sunset." }
-      ],
-      culture: "Bow slightly (about 15 degrees) when saying these to strangers or superiors. It shows instant respect."
-    },
-    exercises: [
-      {
-        type: 'multiple_choice',
-        question: "It's 8:30 AM and you see your boss. What do you say?",
-        options: ["Konnichiwa", "Ohayou gozaimasu", "Konbanwa"],
-        answer: 1,
-        conceptTag: "Morning Greeting",
-        feedback_incorrect: "The sun is just coming up! 'Konnichiwa' is for daytime, 'Konbanwa' is for night."
-      },
-      {
-        type: 'listen',
-        question: "Listen to the audio. Which greeting is this?",
-        audioKana: "こんにちは",
-        options: ["Good morning", "Good afternoon", "Good evening"],
-        answer: 1,
-        conceptTag: "Listening Comp",
-        feedback_incorrect: "That was 'Konnichiwa' (Good afternoon)."
-      },
-      {
-        type: 'speak',
-        question: "Tap the microphone and say 'Good evening' in Japanese.",
-        expectedRomaji: ["konbanwa", "kombanwa"],
-        expectedKana: ["こんばんは"],
-        conceptTag: "Pronunciation",
-        feedback_incorrect: "Try to say 'Konbanwa'. Focus on the 'ban' sound!"
-      }
-    ]
-  },
-  {
-    day: 2,
-    title: "Who Am I? The Power of 'Desu'",
-    topic: "Self Introduction",
-    theory: {
-      intro: "Today, we learn how to state facts using the most important word in Japanese: 'Desu'.",
-      concept: "'Desu' (pronounced 'dess') acts like 'is/am/are'. The structure is: [Topic] wa [Info] desu.",
-      examples: [
-        { kana: "わたしはマリアです", romaji: "Watashi wa Maria desu.", eng: "I am Maria.", context: "Formal introduction." },
-        { kana: "がくせいです", romaji: "Gakusei desu.", eng: "I am a student.", context: "Dropping 'Watashi wa' when it's obvious." }
-      ],
-      culture: "Japanese drops pronouns constantly. If someone asks your job, just say '[Job] desu'. Saying 'I am' every time sounds robotic!"
-    },
-    exercises: [
-      {
-        type: 'multiple_choice',
-        question: "How would you say 'I am Anna'?",
-        options: ["Anna wa watashi desu", "Watashi wa Anna desu", "Desu Anna watashi"],
-        answer: 1,
-        conceptTag: "Sentence Structure",
-        feedback_incorrect: "Structure: [Watashi] + wa + [Name] + desu."
-      },
-      {
-        type: 'speak',
-        question: "Introduce yourself! Say 'I am a student' (Gakusei = student). Drop the 'I am'!",
-        expectedRomaji: ["gakusei desu", "gakuseidesu"],
-        expectedKana: ["がくせいです"],
-        conceptTag: "Pronunciation",
-        feedback_incorrect: "Say 'Gakusei desu'. (Gah-koo-say dess)."
-      }
-    ]
-  },
-  {
-    day: 3,
-    title: "Survival: Where is the...?",
-    topic: "Locations",
-    theory: {
-      intro: "You're in Tokyo, and you need the bathroom. Fast.",
-      concept: "To ask a question, add the magic particle 'ka' at the end. To ask where something is: [Place] wa doko desu ka?",
-      examples: [
-        { kana: "トイレはどこですか", romaji: "Toire wa doko desu ka?", eng: "Where is the bathroom?", context: "Toire = Toilet" },
-        { kana: "えきはどこですか", romaji: "Eki wa doko desu ka?", eng: "Where is the station?", context: "Eki = Station" }
-      ],
-      culture: "Instead of pointing with one finger (which is rude), use your whole open hand to gesture toward a place."
-    },
-    exercises: [
-      {
-        type: 'listen',
-        question: "What is this person looking for?",
-        audioKana: "えきはどこですか",
-        options: ["The bathroom", "The train station", "A restaurant"],
-        answer: 1,
-        conceptTag: "Listening",
-        feedback_incorrect: "Listen for 'Eki' (Station)."
-      },
-      {
-        type: 'speak',
-        question: "Ask: 'Where is the bathroom?'",
-        expectedRomaji: ["toire wa doko desu ka", "toirewadokodesuka"],
-        expectedKana: ["トイレはどこですか"],
-        conceptTag: "Speaking Survival",
-        feedback_incorrect: "Say: 'Toire wa doko desu ka?'"
-      }
-    ]
-  },
-  {
-    day: 4,
-    title: "Yes, No, and Maybe",
-    topic: "Agreements",
-    theory: {
-      intro: "Let's learn how to agree and disagree.",
-      concept: "'Hai' is Yes, and 'Iie' (ee-eh) is No. However, Japanese people rarely say a direct 'No' as it's considered harsh.",
-      examples: [
-        { kana: "はい、そうです", romaji: "Hai, sou desu.", eng: "Yes, that is correct.", context: "Polite agreement." },
-        { kana: "いいえ、ちがいます", romaji: "Iie, chigaimasu.", eng: "No, that is wrong.", context: "Direct disagreement." },
-        { kana: "ちょっと...", romaji: "Chotto...", eng: "It's a little bit...", context: "The polite way to decline an invitation." }
-      ],
-      culture: "If someone invites you out and you can't go, just sucking air through your teeth and saying 'Chotto...' is the polite way to say no!"
-    },
-    exercises: [
-      {
-        type: 'multiple_choice',
-        question: "What is the most polite way to reject an invitation?",
-        options: ["Iie!", "Chigaimasu!", "Chotto..."],
-        answer: 2,
-        conceptTag: "Cultural Nuance",
-        feedback_incorrect: "Directly saying 'Iie' is too harsh. 'Chotto...' leaves it trailing and polite."
-      },
-      {
-        type: 'speak',
-        question: "Say 'Yes, that is right.'",
-        expectedRomaji: ["hai sou desu", "haisoudesu"],
-        expectedKana: ["はいそうです", "はい、そうです"],
-        conceptTag: "Pronunciation",
-        feedback_incorrect: "Say 'Hai, sou desu'."
-      }
-    ]
-  },
-  {
-    day: 5,
-    title: "Ordering Food Like a Pro",
-    topic: "Restaurants",
-    theory: {
-      intro: "Time to eat! Let's order food without pointing and grunting.",
-      concept: "Use the magical phrase 'onegai shimasu' (please) after naming what you want.",
-      examples: [
-        { kana: "これをねがいします", romaji: "Kore onegai shimasu.", eng: "This, please.", context: "While pointing at a menu." },
-        { kana: "みずをおねがいします", romaji: "Mizu o onegai shimasu.", eng: "Water, please.", context: "Mizu = Water." }
-      ],
-      culture: "You don't need to tip in Japan! In fact, leaving money on the table will result in the waiter chasing you down the street to return it."
-    },
-    exercises: [
-      {
-        type: 'multiple_choice',
-        question: "How do you ask for water?",
-        options: ["Mizu doko desu ka", "Mizu onegai shimasu", "Kore onegai shimasu"],
-        answer: 1,
-        conceptTag: "Vocab: Water",
-        feedback_incorrect: "'Mizu' is water, and 'onegai shimasu' is please."
-      },
-      {
-        type: 'listen',
-        question: "What is the customer ordering?",
-        audioKana: "これをおねがいします",
-        options: ["Water", "The bathroom", "This (pointing at menu)"],
-        answer: 2,
-        conceptTag: "Listening",
-        feedback_incorrect: "They said 'Kore' which means 'This'."
-      }
-    ]
-  }
-];
-
-// Procedurally generate the remaining days up to 30 to fulfill the requirement
-const generateFullMonth = () => {
-  const fullCourse = [...DETAILED_LESSONS];
-  const topics = ["Numbers", "Time", "Shopping", "Transport", "Hobbies", "Family", "Weather", "Feelings", "Emergencies", "Review"];
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Konnichi-WOW! Speak Japanese in 30 Days</title>
   
-  for (let i = DETAILED_LESSONS.length + 1; i <= 30; i++) {
-    const topic = topics[i % topics.length];
-    fullCourse.push({
-      day: i,
-      title: `Day ${i}: ${topic} Masterclass`,
-      topic: topic,
-      theory: {
-        intro: `Welcome to Day ${i}. Today we expand your vocabulary regarding ${topic}.`,
-        concept: "Memorization and pattern recognition are key here. Repeat these phrases aloud.",
-        examples: [
-          { kana: "がんばって", romaji: "Ganbatte!", eng: "Do your best!", context: "Encouragement" }
-        ],
-        culture: "Consistency is more important than intensity. Just 10 minutes a day wires your brain for Japanese!"
-      },
-      exercises: [
-        {
-          type: 'multiple_choice',
-          question: `Which phrase is related to today's topic?`,
-          options: ["Ganbatte (Do your best)", "Sushi", "Ninja"],
-          answer: 0,
-          conceptTag: "Vocabulary",
-          feedback_incorrect: "Focus on the daily phrase 'Ganbatte'."
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Safe area padding for mobile navigation */
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+    /* Prevent text selection on game buttons */
+    .no-select { user-select: none; -webkit-user-select: none; }
+  </style>
+</head>
+<body class="bg-slate-50 font-sans text-gray-800 selection:bg-pink-200">
+
+  <!-- Main Application Container -->
+  <div id="root">
+    <!-- Content injected via JavaScript -->
+  </div>
+
+  <script type="module">
+    // --- FIREBASE SETUP ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+    // --- DATA & SYLLABUS ---
+    const DETAILED_LESSONS = [
+      {
+        day: 1,
+        title: "First Encounters: The Magic of Greetings",
+        topic: "Greetings & Basics",
+        theory: {
+          intro: "Welcome to Day 1! In Japan, greetings are the foundation of respect. The language shifts based on the time of day and social status. Today we learn the core greetings and the all-important 'Sumimasen'.",
+          concept: "Morning greetings have a polite suffix ('gozaimasu') that you drop with friends. 'Sumimasen' is your magic word—it means 'Excuse me', 'Sorry', and sometimes even 'Thank you'!",
+          examples: [
+            { kana: "おはようございます", romaji: "Ohayou gozaimasu", eng: "Good morning (Polite)", context: "Use until 11:00 AM." },
+            { kana: "こんにちは", romaji: "Konnichiwa", eng: "Good afternoon / Hello", context: "Standard daytime greeting." },
+            { kana: "こんばんは", romaji: "Konbanwa", eng: "Good evening", context: "Use after sunset." },
+            { kana: "すみません", romaji: "Sumimasen", eng: "Excuse me / Sorry", context: "Use to get a waiter's attention, apologize, or pass through a crowd." },
+            { kana: "ありがとう", romaji: "Arigatou", eng: "Thank you", context: "Add 'gozaimasu' to be polite to strangers." }
+          ],
+          culture: "Bow slightly (about 15 degrees) when saying these to strangers or superiors. It shows instant respect."
         },
-        {
-          type: 'speak',
-          question: "Say 'Do your best!' in Japanese.",
-          expectedRomaji: ["ganbatte"],
-          expectedKana: ["がんばって"],
-          conceptTag: "Pronunciation",
-          feedback_incorrect: "Say 'Gan-bat-te'."
-        }
-      ]
-    });
-  }
-  return fullCourse;
-};
+        exercises: [
+          { type: 'multiple_choice', question: "It's 8:30 AM and you see your boss. What do you say?", options: ["Konnichiwa", "Ohayou gozaimasu", "Konbanwa"], answer: 1, conceptTag: "Morning Greeting", feedback_incorrect: "The sun is just coming up! 'Konnichiwa' is for daytime." },
+          { type: 'listen', question: "Listen to the audio. Which greeting is this?", audioKana: "こんにちは", options: ["Good morning", "Good afternoon", "Good evening"], answer: 1, conceptTag: "Listening Comp", feedback_incorrect: "That was 'Konnichiwa' (Good afternoon)." },
+          { type: 'speak', question: "Tap the microphone and say 'Good evening' in Japanese.", expectedRomaji: ["konbanwa", "kombanwa"], expectedKana: ["こんばんは"], conceptTag: "Pronunciation", feedback_incorrect: "Try to say 'Konbanwa'. Focus on the 'ban' sound!" },
+          { type: 'multiple_choice', question: "You bumped into someone on the train. What is the best thing to say?", options: ["Arigatou", "Sumimasen", "Ohayou"], answer: 1, conceptTag: "Apology", feedback_incorrect: "'Sumimasen' means 'Excuse me' or 'Sorry'. It's perfect for bumping into people." },
+          { type: 'listen', question: "What does this mean?", audioKana: "すみません", options: ["Thank you", "Excuse me / Sorry", "Good night"], answer: 1, conceptTag: "Listening", feedback_incorrect: "That was 'Sumimasen'." },
+          { type: 'speak', question: "Say 'Thank you' (Casual)", expectedRomaji: ["arigato", "arigatou"], expectedKana: ["ありがとう"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'A-ri-ga-to-u'." },
+          { type: 'multiple_choice', question: "How do you make 'Arigatou' polite when talking to a cashier?", options: ["Arigatou sumimasen", "Arigatou gozaimasu", "Arigatou konnichiwa"], answer: 1, conceptTag: "Politeness", feedback_incorrect: "Add 'gozaimasu' to make things polite!" },
+          { type: 'listen', question: "Identify this phrase:", audioKana: "おはようございます", options: ["Good evening", "Good morning (Polite)", "Excuse me"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Listen for the long 'gozaimasu' at the end. It's 'Ohayou gozaimasu'." },
+          { type: 'multiple_choice', question: "True or False: You can use 'Sumimasen' to call a waiter at a restaurant.", options: ["True", "False"], answer: 0, conceptTag: "Culture", feedback_incorrect: "True! Yelling 'Sumimasen!' is the standard way to call a waiter in Japan." },
+          { type: 'speak', question: "Call the waiter! Say 'Excuse me!'", expectedRomaji: ["sumimasen"], expectedKana: ["すみません"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Su-mi-ma-sen!'" }
+        ]
+      },
+      {
+        day: 2,
+        title: "Who Am I? The Power of 'Desu'",
+        topic: "Self Introduction",
+        theory: {
+          intro: "Today, we learn how to state facts using the most important word in Japanese: 'Desu'. We also learn how to introduce ourselves.",
+          concept: "'Desu' (pronounced 'dess') acts like 'is/am/are'. The structure is: [Topic] wa [Info] desu.",
+          examples: [
+            { kana: "わたしはマリアです", romaji: "Watashi wa Maria desu.", eng: "I am Maria.", context: "Formal introduction." },
+            { kana: "がくせいです", romaji: "Gakusei desu.", eng: "I am a student.", context: "Dropping 'Watashi wa' when it's obvious." },
+            { kana: "アメリカじんです", romaji: "Amerika jin desu.", eng: "I am American.", context: "Country + 'jin' = Nationality." },
+            { kana: "よろしくおねがいします", romaji: "Yoroshiku onegaishimasu", eng: "Nice to meet you / Please treat me well.", context: "Always say this at the end of an introduction." }
+          ],
+          culture: "Japanese drops pronouns constantly. If someone asks your job, just say '[Job] desu'. Saying 'I am' every time sounds robotic! Also, 'Yoroshiku' is the glue of Japanese society."
+        },
+        exercises: [
+          { type: 'multiple_choice', question: "How would you say 'I am Anna'?", options: ["Anna wa watashi desu", "Watashi wa Anna desu", "Desu Anna watashi"], answer: 1, conceptTag: "Sentence Structure", feedback_incorrect: "Structure: [Watashi] + wa + [Name] + desu." },
+          { type: 'speak', question: "Say 'I am a student' (Gakusei = student). Drop the 'I am'!", expectedRomaji: ["gakusei desu", "gakuseidesu"], expectedKana: ["がくせいです"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Gakusei desu'. (Gah-koo-say dess)." },
+          { type: 'multiple_choice', question: "How do you state your nationality if you are from Italy (Itaria)?", options: ["Itaria desu", "Watashi wa Itaria", "Itaria jin desu"], answer: 2, conceptTag: "Nationality", feedback_incorrect: "Add 'jin' (person) after the country name! Itaria-jin desu." },
+          { type: 'listen', question: "What is this person's nationality?", audioKana: "アメリカじんです", options: ["British", "American", "Australian"], answer: 1, conceptTag: "Listening Comp", feedback_incorrect: "They said 'Amerika jin' (American)." },
+          { type: 'multiple_choice', question: "What is the crucial phrase to say at the end of an introduction?", options: ["Arigatou", "Sumimasen", "Yoroshiku onegaishimasu"], answer: 2, conceptTag: "Culture", feedback_incorrect: "'Yoroshiku onegaishimasu' is essential for building good relations." },
+          { type: 'speak', question: "Say 'Nice to meet you / Treat me well' (Polite)", expectedRomaji: ["yoroshiku onegaishimasu", "yoroshikuonegaishimasu"], expectedKana: ["よろしくおねがいします"], conceptTag: "Pronunciation", feedback_incorrect: "Yoroshiku o-ne-gai-shi-ma-su." },
+          { type: 'listen', question: "What fact is this person stating?", audioKana: "がくせいです", options: ["I am Maria", "I am a student", "Nice to meet you"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Gakusei = Student." },
+          { type: 'multiple_choice', question: "True or False: You should use 'Watashi wa' in every sentence about yourself.", options: ["True", "False"], answer: 1, conceptTag: "Grammar Nuance", feedback_incorrect: "False! Drop 'Watashi wa' when the context is clear to sound like a native." },
+          { type: 'speak', question: "State simply: '(I) am Italian.' (Itaria jin)", expectedRomaji: ["itaria jin desu", "itariajindesu"], expectedKana: ["イタリアじんです"], conceptTag: "Speaking", feedback_incorrect: "Say 'Itaria jin desu'." },
+          { type: 'listen', question: "Listen to the full intro. Who is this?", audioKana: "わたしはジョンです", options: ["Maria", "John", "Anna"], answer: 1, conceptTag: "Listening", feedback_incorrect: "They said 'Watashi wa Jon (John) desu'." }
+        ]
+      },
+      {
+        day: 3,
+        title: "Survival: Where is the...?",
+        topic: "Locations & Directions",
+        theory: {
+          intro: "You're in Tokyo, and you need the bathroom. Fast. Today is about finding things.",
+          concept: "To ask a question, add the magic particle 'ka' at the end. To ask where something is: [Place] wa doko desu ka?",
+          examples: [
+            { kana: "トイレはどこですか", romaji: "Toire wa doko desu ka?", eng: "Where is the bathroom?", context: "Toire = Toilet" },
+            { kana: "えきはどこですか", romaji: "Eki wa doko desu ka?", eng: "Where is the station?", context: "Eki = Station" },
+            { kana: "コンビニはどこですか", romaji: "Konbini wa doko desu ka?", eng: "Where is the convenience store?", context: "Konbini is your lifeline in Japan." },
+            { kana: "ホテル", romaji: "Hoteru", eng: "Hotel", context: "Used the same way: Hoteru wa doko desu ka?" }
+          ],
+          culture: "Instead of pointing with one finger (which is rude), Japanese people use their whole open hand, palm facing up, to gesture toward a place."
+        },
+        exercises: [
+          { type: 'listen', question: "What is this person looking for?", audioKana: "えきはどこですか", options: ["The bathroom", "The train station", "A restaurant"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Listen for 'Eki' (Station)." },
+          { type: 'speak', question: "Ask: 'Where is the bathroom?'", expectedRomaji: ["toire wa doko desu ka", "toirewadokodesuka"], expectedKana: ["トイレはどこですか"], conceptTag: "Speaking Survival", feedback_incorrect: "Say: 'Toire wa doko desu ka?'" },
+          { type: 'multiple_choice', question: "How do you ask 'Where is the convenience store?'", options: ["Konbini doko wa desu ka?", "Konbini wa doko desu ka?", "Doko wa konbini desu ka?"], answer: 1, conceptTag: "Sentence Structure", feedback_incorrect: "The formula is [Place] + wa + doko + desu ka." },
+          { type: 'listen', question: "What place is this?", audioKana: "コンビニ", options: ["Hotel", "Station", "Convenience Store"], answer: 2, conceptTag: "Vocab", feedback_incorrect: "Konbini = Convenience Store." },
+          { type: 'speak', question: "Ask: 'Where is the hotel?' (Hoteru)", expectedRomaji: ["hoteru wa doko desu ka"], expectedKana: ["ホテルはどこですか"], conceptTag: "Speaking", feedback_incorrect: "Say 'Hoteru wa doko desu ka?'" },
+          { type: 'multiple_choice', question: "What particle turns a statement into a question?", options: ["Wa", "Ni", "Ka"], answer: 2, conceptTag: "Grammar", feedback_incorrect: "Adding 'ka' to the end of a sentence makes it a question." },
+          { type: 'listen', question: "Listen to the audio. What are they looking for?", audioKana: "トイレはどこですか", options: ["Station", "Bathroom", "Hotel"], answer: 1, conceptTag: "Listening", feedback_incorrect: "They said 'Toire' (Toilet/Bathroom)." },
+          { type: 'speak', question: "Say the word for 'Train Station'", expectedRomaji: ["eki"], expectedKana: ["えき"], conceptTag: "Vocab", feedback_incorrect: "Say 'Eki'." },
+          { type: 'multiple_choice', question: "How should you point to direct someone in Japan?", options: ["With your index finger", "With your chin", "With an open hand, palm up"], answer: 2, conceptTag: "Culture", feedback_incorrect: "An open hand is the polite way to gesture directions." },
+          { type: 'speak', question: "Ask: 'Where is the station?'", expectedRomaji: ["eki wa doko desu ka"], expectedKana: ["えきはどこですか"], conceptTag: "Fluency", feedback_incorrect: "Eki wa doko desu ka?" }
+        ]
+      },
+      {
+        day: 4,
+        title: "Agreeing, Disagreeing & 'I don't know'",
+        topic: "Agreements & Survival",
+        theory: {
+          intro: "Let's learn how to agree, disagree politely, and the most important survival phrase when you are confused.",
+          concept: "'Hai' is Yes, and 'Iie' is No. However, Japanese people rarely say a direct 'No'. Also, 'Wakarimasen' will save you when someone speaks too fast.",
+          examples: [
+            { kana: "はい、そうです", romaji: "Hai, sou desu.", eng: "Yes, that is correct.", context: "Polite agreement." },
+            { kana: "いいえ、ちがいます", romaji: "Iie, chigaimasu.", eng: "No, that is wrong.", context: "Direct disagreement." },
+            { kana: "ちょっと...", romaji: "Chotto...", eng: "It's a little bit...", context: "The polite way to decline an invitation." },
+            { kana: "わかりません", romaji: "Wakarimasen", eng: "I don't understand / I don't know", context: "Crucial! Use this instead of smiling and nodding." },
+            { kana: "えいごをはなせますか", romaji: "Eigo o hanasemasu ka?", eng: "Can you speak English?", context: "Eigo = English." }
+          ],
+          culture: "If someone invites you out and you can't go, just sucking air through your teeth and saying 'Chotto...' is the polite way to say no!"
+        },
+        exercises: [
+          { type: 'multiple_choice', question: "What is the most polite way to reject an invitation?", options: ["Iie!", "Chigaimasu!", "Chotto..."], answer: 2, conceptTag: "Cultural Nuance", feedback_incorrect: "Directly saying 'Iie' is too harsh. 'Chotto...' leaves it trailing and polite." },
+          { type: 'speak', question: "Say 'Yes, that is right.'", expectedRomaji: ["hai sou desu", "haisoudesu"], expectedKana: ["はいそうです", "はい、そうです"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'Hai, sou desu'." },
+          { type: 'multiple_choice', question: "A local starts speaking rapid Japanese to you. What should you say?", options: ["Hai, sou desu", "Wakarimasen", "Arigatou"], answer: 1, conceptTag: "Survival", feedback_incorrect: "'Wakarimasen' means 'I don't understand'. It's very polite and helpful!" },
+          { type: 'listen', question: "What does this mean?", audioKana: "わかりません", options: ["I don't understand", "Where is it?", "Thank you"], answer: 0, conceptTag: "Listening", feedback_incorrect: "Wakarimasen = I don't understand / I don't know." },
+          { type: 'speak', question: "Ask: 'Can you speak English?' (Eigo = English)", expectedRomaji: ["eigo o hanasemasu ka", "eigoohanasemasuka"], expectedKana: ["えいごをはなせますか"], conceptTag: "Speaking", feedback_incorrect: "Say: Eigo o hanasemasu ka?" },
+          { type: 'multiple_choice', question: "If someone asks 'Are you American?' and you are British, how do you politely say 'No, that's wrong'?", options: ["Iie, chigaimasu", "Hai, sou desu", "Chotto..."], answer: 0, conceptTag: "Disagreement", feedback_incorrect: "'Iie, chigaimasu' means 'No, that's incorrect/different'." },
+          { type: 'listen', question: "Listen to this agreement:", audioKana: "はい、そうです", options: ["No, it's wrong", "Yes, that's correct", "I don't know"], answer: 1, conceptTag: "Listening", feedback_incorrect: "Hai, sou desu = Yes, that is correct." },
+          { type: 'speak', question: "Say 'I don't understand/know'.", expectedRomaji: ["wakarimasen"], expectedKana: ["わかりません"], conceptTag: "Speaking", feedback_incorrect: "Wa-ka-ri-ma-sen." },
+          { type: 'multiple_choice', question: "True or False: Saying 'Iie' (No) directly is very common and polite in Japan.", options: ["True", "False"], answer: 1, conceptTag: "Culture", feedback_incorrect: "False. The Japanese prefer soft refusals like 'Chotto...' or 'Chigaimasu' rather than a blunt 'No'." },
+          { type: 'speak', question: "Say 'No, that is incorrect.'", expectedRomaji: ["iie chigaimasu"], expectedKana: ["いいえ、ちがいます", "いいえちがいます"], conceptTag: "Fluency", feedback_incorrect: "Iie, chigaimasu." }
+        ]
+      },
+      {
+        day: 5,
+        title: "Shopping & Dining Like a Pro",
+        topic: "Restaurants & Stores",
+        theory: {
+          intro: "Time to buy things and eat! Let's order food and ask for prices without just pointing and grunting.",
+          concept: "Use the magical words 'Kudasai' or 'Onegaishimasu' (please). We will also learn how to compliment the food!",
+          examples: [
+            { kana: "これをください", romaji: "Kore o kudasai.", eng: "This, please.", context: "While pointing at a menu or item." },
+            { kana: "いくらですか", romaji: "Ikura desu ka?", eng: "How much is it?", context: "Essential for shopping." },
+            { kana: "おいしい", romaji: "Oishii", eng: "Delicious (Polite/Standard)", context: "Say this to the chef or waiter to make them happy." },
+            { kana: "うまい", romaji: "Umai", eng: "Delicious (Casual/Masculine)", context: "Used more often by guys in casual settings. Means 'really tasty/good'." },
+            { kana: "みずをおねがいします", romaji: "Mizu o onegaishimasu.", eng: "Water, please.", context: "Mizu = Water." }
+          ],
+          culture: "You don't need to tip in Japan! In fact, leaving money on the table will result in the waiter chasing you down the street to return it. If the food is good, just say 'Oishii!'"
+        },
+        exercises: [
+          { type: 'multiple_choice', question: "How do you ask 'How much is it?'", options: ["Ikura desu ka?", "Doko desu ka?", "Kore kudasai?"], answer: 0, conceptTag: "Shopping", feedback_incorrect: "'Ikura desu ka' is the phrase for asking the price." },
+          { type: 'listen', question: "What is the customer asking?", audioKana: "いくらですか", options: ["Where is it?", "How much is it?", "Is it delicious?"], answer: 1, conceptTag: "Listening Comp", feedback_incorrect: "They asked 'Ikura desu ka?' (How much?)." },
+          { type: 'speak', question: "Point at an item and say 'This, please.' (Kore = this)", expectedRomaji: ["kore o kudasai", "koreokudasai"], expectedKana: ["これをください"], conceptTag: "Ordering", feedback_incorrect: "Say 'Kore o kudasai'." },
+          { type: 'multiple_choice', question: "You want to say the food is delicious in a standard, polite way. What do you say?", options: ["Umai!", "Oishii!", "Sugoi!"], answer: 1, conceptTag: "Vocab", feedback_incorrect: "'Oishii' is the standard, polite word for delicious. 'Umai' is casual." },
+          { type: 'speak', question: "Say 'Delicious!' (Standard/Polite)", expectedRomaji: ["oishii", "oishi"], expectedKana: ["おいしい"], conceptTag: "Pronunciation", feedback_incorrect: "Say 'O-i-shi-i'." },
+          { type: 'multiple_choice', question: "What is 'Umai'?", options: ["Water", "A casual way to say delicious", "Excuse me"], answer: 1, conceptTag: "Vocab Nuance", feedback_incorrect: "'Umai' means delicious or skillful, used mostly in casual settings (often by men)." },
+          { type: 'listen', question: "What is the customer ordering?", audioKana: "みずをおねがいします", options: ["Water", "The bill", "This menu item"], answer: 0, conceptTag: "Listening", feedback_incorrect: "'Mizu' means water." },
+          { type: 'speak', question: "Ask for water: 'Water, please.'", expectedRomaji: ["mizu o onegaishimasu", "mizu onegaishimasu"], expectedKana: ["みずをおねがいします"], conceptTag: "Ordering", feedback_incorrect: "Mizu o onegaishimasu." },
+          { type: 'multiple_choice', question: "Should you tip the waiter if the food is very 'Oishii'?", options: ["Yes, 15%", "No, tipping is not practiced in Japan"], answer: 1, conceptTag: "Culture", feedback_incorrect: "No tipping in Japan! Just giving a sincere 'Oishii' is the best tip." },
+          { type: 'speak', question: "Ask 'How much is it?'", expectedRomaji: ["ikura desu ka", "ikuradesuka"], expectedKana: ["いくらですか"], conceptTag: "Fluency", feedback_incorrect: "I-ku-ra de-su ka?" }
+        ]
+      }
+    ];
 
-const COURSE_DATA = generateFullMonth();
+    const generateFullMonth = () => {
+      const fullCourse = [...DETAILED_LESSONS];
+      const topics = ["Numbers & Counting", "Time & Dates", "Shopping Mastery", "Train Travel", "Hobbies & Fun", "Family Members", "Weather Chat", "Expressing Feelings", "Emergencies", "Review: Weeks 1-2"];
+      
+      for (let i = DETAILED_LESSONS.length + 1; i <= 30; i++) {
+        const topic = topics[i % topics.length];
+        const dailyExercises = Array.from({ length: 15 }, (_, index) => {
+          const typeNum = index % 3;
+          if (typeNum === 0) {
+            return { type: 'multiple_choice', question: `Review Concept ${index + 1}: Which applies to ${topic}?`, options: ["Ganbatte (Do your best)", "Wakarimasen (I don't know)", "Sugoi (Amazing)"], answer: 0, conceptTag: `Vocab ${index}`, feedback_incorrect: "Keep reviewing your daily vocabulary list." };
+          } else if (typeNum === 1) {
+            return { type: 'listen', question: "Listen to the daily phrase:", audioKana: "がんばって", options: ["Do your best!", "Amazing!", "How much?"], answer: 0, conceptTag: "Listening Focus", feedback_incorrect: "Ganbatte means 'Do your best!'" };
+          } else {
+            return { type: 'speak', question: "Pronunciation Check: Say 'Do your best!'", expectedRomaji: ["ganbatte"], expectedKana: ["がんばって"], conceptTag: "Speaking Check", feedback_incorrect: "Say 'Gan-bat-te'." };
+          }
+        });
 
-// --- HELPER COMPONENTS ---
+        fullCourse.push({
+          day: i,
+          title: `Day ${i}: ${topic}`,
+          topic: topic,
+          theory: {
+            intro: `Welcome to Day ${i}. Today we expand your vocabulary regarding ${topic}. This session requires 15-20 minutes of focus.`,
+            concept: "Repetition builds fluency. We will test your listening, reading, and speaking across 15 rapid-fire exercises.",
+            examples: [
+              { kana: "がんばって", romaji: "Ganbatte!", eng: "Do your best!", context: "Used constantly in Japan to encourage others." }
+            ],
+            culture: "Consistency is more important than intensity. Doing these 15 exercises every single day will wire your brain for Japanese naturally."
+          },
+          exercises: dailyExercises
+        });
+      }
+      return fullCourse;
+    };
 
-const AudioButton = ({ textKana, className = "" }) => {
-  const playAudio = (e) => {
-    e.stopPropagation();
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech to prevent queuing bugs
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(textKana);
-      utterance.lang = 'ja-JP'; 
-      utterance.rate = 0.85; 
-      window.speechSynthesis.speak(utterance);
-    } else {
-      alert("Text-to-Speech not supported in this browser.");
-    }
-  };
+    const COURSE_DATA = generateFullMonth();
 
-  return (
-    <button 
-      onClick={playAudio}
-      className={`flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-full transition-colors ${className}`}
-    >
-      <Volume2 size={20} />
-      <span className="font-semibold">Listen</span>
-    </button>
-  );
-};
+    const LIBRARY_DATA = [
+      {
+        category: "The Essentials",
+        icon: "help-circle", iconColor: "text-blue-500",
+        items: [
+          { kana: "わかりません", romaji: "Wakarimasen", eng: "I don't understand / I don't know", context: "Crucial! Use this instead of smiling and nodding when lost." },
+          { kana: "すみません", romaji: "Sumimasen", eng: "Excuse me / Sorry", context: "Use to get attention, apologize, or say a quick thanks." },
+          { kana: "えいごをはなせますか", romaji: "Eigo o hanasemasu ka?", eng: "Can you speak English?", context: "Ask this before defaulting to English." },
+          { kana: "はい / いいえ", romaji: "Hai / Iie", eng: "Yes / No", context: "Japanese people rarely say a blunt 'Iie' (No). Use 'Chotto...' (A little...) to decline politely." }
+        ]
+      },
+      {
+        category: "Shopping & Money",
+        icon: "shopping-bag", iconColor: "text-pink-500",
+        items: [
+          { kana: "いくらですか", romaji: "Ikura desu ka?", eng: "How much is it?", context: "Essential for stores and markets." },
+          { kana: "これをください", romaji: "Kore o kudasai", eng: "This, please.", context: "Point at the item and say this. 'Kudasai' is for requesting things." },
+          { kana: "カードはつかえますか", romaji: "Kaado wa tsukaemasu ka?", eng: "Can I use a credit card?", context: "Japan is still largely a cash-based society in smaller shops." }
+        ]
+      },
+      {
+        category: "Reactions & Compliments",
+        icon: "smile", iconColor: "text-green-500",
+        items: [
+          { kana: "すごい！", romaji: "Sugoi!", eng: "Amazing! / Great!", context: "The ultimate reaction word. Use it when impressed by anything." },
+          { kana: "かわいい！", romaji: "Kawaii!", eng: "Cute!", context: "Used to describe fashion, items, animals, or people. A staple of pop culture." },
+          { kana: "ほんとう？", romaji: "Hontou?", eng: "Really?", context: "Use this to show active listening during a conversation." }
+        ]
+      },
+      {
+        category: "Restaurant & Dining",
+        icon: "utensils", iconColor: "text-orange-500",
+        items: [
+          { kana: "おいしい", romaji: "Oishii", eng: "Delicious (Polite)", context: "The standard, polite way to praise food. Say it to the chef!" },
+          { kana: "うまい", romaji: "Umai", eng: "Delicious (Casual)", context: "More casual, often used by men to say something is 'really tasty' or 'skillful'." },
+          { kana: "メニュー、おねがいします", romaji: "Menyuu, onegaishimasu", eng: "Menu, please.", context: "'Onegaishimasu' is used for requesting services/actions." },
+          { kana: "おかいけい、おねがいします", romaji: "Okaikei, onegaishimasu", eng: "The bill, please.", context: "Say this at the end of the meal, or cross your index fingers in an 'X'." }
+        ]
+      },
+      {
+        category: "Medical & Help",
+        icon: "heart-pulse", iconColor: "text-red-500",
+        items: [
+          { kana: "たすけてください", romaji: "Tasukete kudasai", eng: "Please help me!", context: "Emergency phrase." },
+          { kana: "あたまがいたいです", romaji: "Atama ga itai desu", eng: "My head hurts.", context: "Atama (Head) + itai (hurts)." },
+          { kana: "びょういんはどこですか", romaji: "Byouin wa doko desu ka?", eng: "Where is the hospital?", context: "Byouin = Hospital." }
+        ]
+      }
+    ];
 
-// --- MAIN APPLICATION COMPONENT ---
+    // --- APPLICATION STATE ---
+    const state = {
+      user: null,
+      profileName: "Learner",
+      isAuthLoading: true,
+      currentView: 'dashboard',
+      activeDay: 1,
+      completedDays: [],
+      mistakesRecord: {},
+      gameStep: 0,
+      score: 0,
+      selectedAnswer: null,
+      showFeedback: false,
+      isRecording: false,
+      currentMistakes: []
+    };
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [profileName, setProfileName] = useState("Learner");
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, theory, game, result, library, profile
-  const [activeDay, setActiveDay] = useState(1);
-  
-  // Progress State
-  const [completedDays, setCompletedDays] = useState([]);
-  const [mistakesRecord, setMistakesRecord] = useState({}); // { day1: ['Greeting', 'Vocab'], day2: [] }
-  
-  // Game State
-  const [gameStep, setGameStep] = useState(0);
-  const [score, setScore] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [currentMistakes, setCurrentMistakes] = useState([]);
+    // --- FIREBASE LOGIC ---
+    let unsubscribeSnapshot = null;
 
-  // 1. Firebase Auth Setup
-  useEffect(() => {
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -300,653 +302,611 @@ export default function App() {
         console.error("Auth error:", error);
       }
     };
-    initAuth();
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setIsAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    onAuthStateChanged(auth, (currentUser) => {
+      state.user = currentUser;
+      state.isAuthLoading = false;
+      renderApp();
 
-  // 2. Load User Data from Firestore
-  useEffect(() => {
-    if (!user) return;
-    
-    const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
-    
-    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setCompletedDays(data.completedDays || []);
-        setMistakesRecord(data.mistakesRecord || {});
-        if (data.profileName) setProfileName(data.profileName);
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+
+      if (currentUser) {
+        const userDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data');
+        unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            state.completedDays = data.completedDays || [];
+            state.mistakesRecord = data.mistakesRecord || {};
+            if (data.profileName) state.profileName = data.profileName;
+            // Only re-render if not currently in game to avoid interrupting flow
+            if(state.currentView !== 'game') renderApp();
+          }
+        }, (error) => console.error("Error fetching data:", error));
       }
-    }, (error) => {
-      console.error("Error fetching data:", error);
     });
 
-    return () => unsubscribe();
-  }, [user]);
-
-  // 3. Save Data Helper
-  const saveProgress = async (newCompleted, newMistakes) => {
-    if (!user) return;
-    try {
-      const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
-      await setDoc(userDocRef, {
-        completedDays: newCompleted,
-        mistakesRecord: newMistakes,
-        profileName: profileName,
-        lastUpdated: new Date().toISOString()
-      }, { merge: true });
-    } catch (e) {
-      console.error("Failed to save:", e);
-    }
-  };
-
-  // --- GAME LOGIC ---
-
-  const handleStartDay = (dayNum) => {
-    setActiveDay(dayNum);
-    setCurrentView('theory');
-    setGameStep(0);
-    setScore(0);
-    setSelectedAnswer(null);
-    setShowFeedback(false);
-    setCurrentMistakes([]);
-  };
-
-  const handleMultipleChoiceAnswer = (index) => {
-    if (showFeedback) return;
-    setSelectedAnswer(index);
-    setShowFeedback(true);
-    
-    const exercise = COURSE_DATA.find(d => d.day === activeDay).exercises[gameStep];
-    if (index === exercise.answer) {
-      setScore(s => s + 1);
-    } else {
-      setCurrentMistakes(prev => [...prev, exercise.conceptTag]);
-    }
-  };
-
-  const handleSpeechRecognition = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      // Fallback if browser doesn't support speech API (e.g. Firefox)
-      alert("Speech recognition isn't supported in your browser. Auto-passing this exercise for you!");
-      setScore(s => s + 1);
-      setSelectedAnswer(true); // true means correct in this context
-      setShowFeedback(true);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ja-JP';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    setIsRecording(true);
-
-    recognition.onresult = (event) => {
-      setIsRecording(false);
-      const transcript = event.results[0][0].transcript.toLowerCase().trim();
-      const exercise = COURSE_DATA.find(d => d.day === activeDay).exercises[gameStep];
-      
-      // Check if transcript matches expected Romaji (sometimes Speech API returns romaji) or Kana
-      const isMatch = exercise.expectedKana.includes(transcript) || 
-                      exercise.expectedRomaji.some(r => transcript.includes(r));
-      
-      setSelectedAnswer(isMatch);
-      setShowFeedback(true);
-      
-      if (isMatch) {
-        setScore(s => s + 1);
-      } else {
-        setCurrentMistakes(prev => [...prev, exercise.conceptTag]);
+    const saveProgress = async (newCompleted, newMistakes) => {
+      if (!state.user) return;
+      try {
+        const userDocRef = doc(db, 'artifacts', appId, 'users', state.user.uid, 'profile', 'data');
+        await setDoc(userDocRef, {
+          completedDays: newCompleted,
+          mistakesRecord: newMistakes,
+          profileName: state.profileName,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {
+        console.error("Failed to save:", e);
       }
     };
 
-    recognition.onerror = (event) => {
-      setIsRecording(false);
-      if (event.error === 'not-allowed') {
-        alert("Microphone access denied. Please allow microphone access to practice speaking.");
+    // --- GLOBAL ACTIONS ---
+    window.changeView = (view) => {
+      state.currentView = view;
+      renderApp();
+    };
+
+    window.startDay = (dayNum) => {
+      state.activeDay = dayNum;
+      state.currentView = 'theory';
+      state.gameStep = 0;
+      state.score = 0;
+      state.selectedAnswer = null;
+      state.showFeedback = false;
+      state.currentMistakes = [];
+      renderApp();
+    };
+
+    window.startGame = () => {
+      state.currentView = 'game';
+      renderApp();
+    };
+
+    window.handleMultipleChoiceAnswer = (index) => {
+      if (state.showFeedback) return;
+      state.selectedAnswer = index;
+      state.showFeedback = true;
+      
+      const exercise = COURSE_DATA.find(d => d.day === state.activeDay).exercises[state.gameStep];
+      if (index === exercise.answer) {
+        state.score += 1;
       } else {
-        // Auto pass on network/API errors to not block the user
-        setScore(s => s + 1);
-        setSelectedAnswer(true); 
-        setShowFeedback(true);
+        state.currentMistakes.push(exercise.conceptTag);
+      }
+      renderApp();
+    };
+
+    window.handleSpeechRecognition = (e) => {
+      if (e) e.preventDefault(); // Prevent double firing on touch
+      if (state.selectedAnswer !== null || state.isRecording) return;
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Speech recognition isn't supported in your browser. Auto-passing this exercise for you!");
+        state.score += 1;
+        state.selectedAnswer = true;
+        state.showFeedback = true;
+        renderApp();
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'ja-JP';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      
+      state.isRecording = true;
+      renderApp();
+
+      recognition.onresult = (event) => {
+        state.isRecording = false;
+        const transcript = event.results[0][0].transcript.toLowerCase().trim();
+        const exercise = COURSE_DATA.find(d => d.day === state.activeDay).exercises[state.gameStep];
+        
+        const isMatch = exercise.expectedKana.includes(transcript) || exercise.expectedRomaji.some(r => transcript.includes(r));
+        
+        state.selectedAnswer = isMatch;
+        state.showFeedback = true;
+        if (isMatch) state.score += 1;
+        else state.currentMistakes.push(exercise.conceptTag);
+        
+        renderApp();
+      };
+
+      recognition.onerror = (event) => {
+        state.isRecording = false;
+        if (event.error === 'not-allowed') {
+          alert("Microphone access denied. Please allow microphone access.");
+        } else { 
+          state.score += 1; 
+          state.selectedAnswer = true; 
+          state.showFeedback = true; 
+        }
+        renderApp();
+      };
+      
+      recognition.start();
+    };
+
+    window.nextQuestion = () => {
+      const currentLesson = COURSE_DATA.find(d => d.day === state.activeDay);
+      if (state.gameStep < currentLesson.exercises.length - 1) {
+        state.gameStep += 1;
+        state.selectedAnswer = null;
+        state.showFeedback = false;
+      } else {
+        const newCompleted = state.completedDays.includes(state.activeDay) ? state.completedDays : [...state.completedDays, state.activeDay];
+        const newMistakes = { ...state.mistakesRecord, [state.activeDay]: state.currentMistakes };
+        
+        state.completedDays = newCompleted;
+        state.mistakesRecord = newMistakes;
+        saveProgress(newCompleted, newMistakes);
+        
+        state.currentView = 'result';
+      }
+      renderApp();
+    };
+
+    window.updateProfileName = (val) => {
+      state.profileName = val;
+      saveProgress(state.completedDays, state.mistakesRecord);
+      renderApp();
+    };
+
+    window.handleSwitchAccount = async () => {
+      if (!state.user) return;
+      try {
+        await signOut(auth);
+        state.completedDays = [];
+        state.mistakesRecord = {};
+        state.profileName = `Learner_${Math.floor(Math.random() * 1000)}`;
+        state.currentView = 'dashboard';
+        renderApp();
+      } catch (e) { console.error(e); }
+    };
+
+    window.playAudio = (e, textKana) => {
+      if (e) e.stopPropagation();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(textKana);
+        utterance.lang = 'ja-JP'; 
+        utterance.rate = 0.85; 
+        window.speechSynthesis.speak(utterance);
+      } else {
+        alert("Text-to-Speech not supported in this browser.");
       }
     };
 
-    recognition.start();
-  };
-
-  const nextQuestion = () => {
-    const currentLesson = COURSE_DATA.find(d => d.day === activeDay);
-    if (gameStep < currentLesson.exercises.length - 1) {
-      setGameStep(s => s + 1);
-      setSelectedAnswer(null);
-      setShowFeedback(false);
-    } else {
-      // Finish Day
-      const newCompleted = completedDays.includes(activeDay) ? completedDays : [...completedDays, activeDay];
-      const newMistakes = { ...mistakesRecord, [activeDay]: currentMistakes };
+    // --- RENDER FUNCTIONS ---
+    const renderApp = () => {
+      const root = document.getElementById('root');
       
-      setCompletedDays(newCompleted);
-      setMistakesRecord(newMistakes);
-      saveProgress(newCompleted, newMistakes);
-      
-      setCurrentView('result');
-    }
-  };
+      if (state.isAuthLoading) {
+        root.innerHTML = `<div class="min-h-screen flex items-center justify-center bg-pink-50 text-pink-500"><i data-lucide="refresh-cw" class="animate-spin w-10 h-10"></i></div>`;
+        lucide.createIcons();
+        return;
+      }
 
-  // --- MULTI-ACCOUNT SIMULATION ---
-  const handleSwitchAccount = async () => {
-    if (!user) return;
-    try {
-      await signOut(auth);
-      // It will auto-trigger the useEffect to sign in anonymously again, generating a new UID
-      // We clear local state briefly
-      setCompletedDays([]);
-      setMistakesRecord({});
-      setProfileName(`Learner_${Math.floor(Math.random() * 1000)}`);
-      setCurrentView('dashboard');
-    } catch (e) {
-      console.error(e);
-    }
-  };
+      let content = '';
+      if (state.currentView === 'dashboard') content = renderDashboard();
+      else if (state.currentView === 'theory') content = renderTheory();
+      else if (state.currentView === 'game') content = renderGame();
+      else if (state.currentView === 'result') content = renderResult();
+      else if (state.currentView === 'library') content = renderLibrary();
+      else if (state.currentView === 'profile') content = renderProfile();
 
-  // --- VIEWS ---
+      root.innerHTML = `
+        ${renderNav()}
+        <main class="p-4 md:p-8 pt-4 md:pt-8 pb-28 md:pb-8">
+          ${content}
+        </main>
+      `;
+      lucide.createIcons();
+    };
 
-  if (isAuthLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-pink-50 text-pink-500"><RefreshCw className="animate-spin" size={40} /></div>;
-  }
-
-  const renderDashboard = () => {
-    return (
-      <div className="max-w-4xl mx-auto pb-20">
-        {/* Header Area */}
-        <header className="bg-gradient-to-r from-pink-500 to-orange-400 text-white rounded-3xl p-6 md:p-8 mb-8 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold mb-2">Konnichi-WOW! 🌸</h1>
-            <p className="text-pink-100 text-lg">Your 30-Day Path to Conversational Japanese.</p>
+    const renderNav = () => {
+      return `
+        <nav class="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 pb-safe md:relative md:border-b md:border-t-0 z-50">
+          <div class="max-w-4xl mx-auto flex justify-around md:justify-center md:gap-16 p-3 md:p-4">
+            <button onclick="window.changeView('dashboard')" class="flex flex-col items-center gap-1 transition-colors ${state.currentView === 'dashboard' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}">
+              <i data-lucide="home" class="w-6 h-6"></i>
+              <span class="text-[10px] md:text-xs font-bold uppercase tracking-wide">Map</span>
+            </button>
+            <button onclick="window.changeView('library')" class="flex flex-col items-center gap-1 transition-colors ${state.currentView === 'library' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}">
+              <i data-lucide="library" class="w-6 h-6"></i>
+              <span class="text-[10px] md:text-xs font-bold uppercase tracking-wide">Guide</span>
+            </button>
+            <button onclick="window.changeView('profile')" class="flex flex-col items-center gap-1 transition-colors ${state.currentView === 'profile' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}">
+              <i data-lucide="user" class="w-6 h-6"></i>
+              <span class="text-[10px] md:text-xs font-bold uppercase tracking-wide">Profile</span>
+            </button>
           </div>
-          <div className="flex gap-4 w-full md:w-auto">
-            <div className="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
-              <Award size={28} className="text-yellow-300 mb-1" />
-              <span className="font-bold text-sm">{completedDays.length} / 30 Days</span>
+        </nav>
+      `;
+    };
+
+    const renderDashboard = () => {
+      let html = `
+      <div class="max-w-4xl mx-auto pb-20">
+        <header class="bg-gradient-to-r from-pink-500 to-orange-400 text-white rounded-3xl p-6 md:p-8 mb-8 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 class="text-3xl md:text-4xl font-extrabold mb-2">Konnichi-WOW! 🌸</h1>
+            <p class="text-pink-100 text-lg">Your 30-Day Path to Conversational Japanese.</p>
+          </div>
+          <div class="flex gap-4 w-full md:w-auto">
+            <div class="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+              <i data-lucide="award" class="text-yellow-300 mb-1 w-7 h-7"></i>
+              <span class="font-bold text-sm">${state.completedDays.length} / 30 Days</span>
             </div>
-            <button 
-              onClick={() => setCurrentView('profile')}
-              className="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 hover:bg-white/30 transition p-3 rounded-2xl backdrop-blur-sm"
-            >
-              <User size={28} className="text-white mb-1" />
-              <span className="font-bold text-sm truncate max-w-[80px]">{profileName}</span>
+            <button onclick="window.changeView('profile')" class="flex-1 md:flex-none flex flex-col items-center justify-center bg-white/20 hover:bg-white/30 transition p-3 rounded-2xl backdrop-blur-sm">
+              <i data-lucide="user" class="text-white mb-1 w-7 h-7"></i>
+              <span class="font-bold text-sm truncate max-w-[80px]">${state.profileName}</span>
             </button>
           </div>
         </header>
 
-        {/* Map Area */}
-        <div className="bg-white rounded-3xl shadow-sm p-4 md:p-8 mb-8 border border-gray-100">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Map className="text-blue-500" /> Syllabus Map
+        <div class="bg-white rounded-3xl shadow-sm p-4 md:p-8 mb-8 border border-gray-100">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <i data-lucide="map" class="text-blue-500 w-6 h-6"></i> Syllabus Map
             </h2>
           </div>
+          <p class="text-gray-500 mb-6 text-sm">Dedicate 15-20 minutes daily. The AI adjusts the exercises to build your fluency.</p>
 
-          <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 before:bg-gradient-to-b before:from-pink-300 before:to-blue-300">
-            {COURSE_DATA.map((dayData, index) => {
-              const isCompleted = completedDays.includes(dayData.day);
-              // Unlock if it's day 1, or if the previous day is completed
-              const isLocked = dayData.day > 1 && !completedDays.includes(dayData.day - 1);
-              const dayMistakes = mistakesRecord[dayData.day] || [];
-              const needsReview = isCompleted && dayMistakes.length > 0;
+          <div class="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 before:bg-gradient-to-b before:from-pink-300 before:to-blue-300">
+      `;
 
-              return (
-                <div key={dayData.day} className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group ${isLocked ? 'opacity-50' : ''}`}>
-                  
-                  {/* Node Circle */}
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 font-bold transition-transform ${isCompleted ? 'bg-green-500 text-white' : isLocked ? 'bg-gray-300 text-gray-500' : 'bg-pink-500 text-white transform scale-110 animate-pulse'}`}>
-                    {isCompleted ? <CheckCircle size={20} /> : dayData.day}
-                  </div>
-                  
-                  {/* Content Card */}
-                  <div className="w-[calc(100%-3.5rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all hover:shadow-md">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex-1">
-                        <span className="text-xs font-bold text-blue-500 uppercase tracking-wider block mb-1">{dayData.topic}</span>
-                        <h3 className="font-bold text-gray-800 leading-tight mb-2">{dayData.title}</h3>
-                        
-                        {/* Status Badges */}
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {isCompleted && !needsReview && <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-md">Completed</span>}
-                          {needsReview && (
-                            <span className="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1">
-                              <AlertTriangle size={12} /> Review: {dayMistakes[0]}
-                            </span>
-                          )}
-                          {isLocked && <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Locked</span>}
-                        </div>
-                      </div>
-                      
-                      {!isLocked && (
-                        <button 
-                          onClick={() => handleStartDay(dayData.day)}
-                          className={`p-3 rounded-full shadow transition-transform hover:scale-110 shrink-0 ${isCompleted ? 'bg-blue-100 text-blue-600' : 'bg-green-500 text-white'}`}
-                        >
-                          {needsReview ? <RefreshCw size={20} /> : <Play size={20} className="ml-1" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+      COURSE_DATA.forEach(dayData => {
+        const isCompleted = state.completedDays.includes(dayData.day);
+        const isLocked = dayData.day > 1 && !state.completedDays.includes(dayData.day - 1);
+        const dayMistakes = state.mistakesRecord[dayData.day] || [];
+        const needsReview = isCompleted && dayMistakes.length > 0;
+
+        let circleClass = "bg-pink-500 text-white transform scale-110 animate-pulse";
+        let circleContent = dayData.day;
+        if (isCompleted) { circleClass = "bg-green-500 text-white"; circleContent = `<i data-lucide="check-circle" class="w-5 h-5"></i>`; }
+        else if (isLocked) { circleClass = "bg-gray-300 text-gray-500"; }
+
+        let badgeHtml = '';
+        if (isCompleted && !needsReview) badgeHtml += `<span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-md">Completed</span>`;
+        if (needsReview) badgeHtml += `<span class="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Review Needed</span>`;
+        if (isLocked) badgeHtml += `<span class="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Locked</span>`;
+
+        let btnHtml = '';
+        if (!isLocked) {
+          const btnClass = isCompleted ? 'bg-blue-100 text-blue-600' : 'bg-green-500 text-white';
+          const icon = needsReview ? `<i data-lucide="refresh-cw" class="w-5 h-5"></i>` : `<i data-lucide="play" class="w-5 h-5 ml-1"></i>`;
+          btnHtml = `<button onclick="window.startDay(${dayData.day})" class="p-3 rounded-full shadow transition-transform hover:scale-110 shrink-0 ${btnClass}">${icon}</button>`;
+        }
+
+        html += `
+          <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group ${isLocked ? 'opacity-50' : ''}">
+            <div class="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 font-bold transition-transform ${circleClass}">
+              ${circleContent}
+            </div>
+            <div class="w-[calc(100%-3.5rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all hover:shadow-md">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1">
+                  <span class="text-xs font-bold text-blue-500 uppercase tracking-wider block mb-1">${dayData.topic}</span>
+                  <h3 class="font-bold text-gray-800 leading-tight mb-1">${dayData.title}</h3>
+                  <p class="text-xs text-gray-400 font-medium mb-2">${dayData.exercises.length} Exercises (~15 mins)</p>
+                  <div class="flex flex-wrap gap-2 mt-2">${badgeHtml}</div>
                 </div>
-              );
-            })}
+                ${btnHtml}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    );
-  };
+        `;
+      });
 
-  const renderTheory = () => {
-    const lesson = COURSE_DATA.find(d => d.day === activeDay);
-    
-    return (
-      <div className="max-w-3xl mx-auto pb-20 mt-4 md:mt-8">
-        <button onClick={() => setCurrentView('dashboard')} className="text-gray-500 mb-6 flex items-center hover:text-gray-800 font-medium">
-          <ChevronRight className="rotate-180 mr-1" /> Back to Map
+      html += `</div></div></div>`;
+      return html;
+    };
+
+    const renderTheory = () => {
+      const lesson = COURSE_DATA.find(d => d.day === state.activeDay);
+      
+      let examplesHtml = lesson.theory.examples.map(ex => `
+        <div class="bg-white border border-gray-200 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:border-blue-300 transition-colors">
+          <div>
+            <p class="text-2xl font-extrabold text-gray-900 mb-1">${ex.kana}</p>
+            <p class="text-blue-600 font-bold mb-1">${ex.romaji}</p>
+            <p class="text-gray-600 font-medium">"${ex.eng}"</p>
+            ${ex.context ? `<p class="text-sm text-gray-500 mt-2 bg-gray-50 p-2 rounded-lg">${ex.context}</p>` : ''}
+          </div>
+          <button onclick="window.playAudio(event, '${ex.kana}')" class="flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-full transition-colors shrink-0">
+            <i data-lucide="volume-2" class="w-5 h-5"></i><span class="font-semibold text-sm">Listen</span>
+          </button>
+        </div>
+      `).join('');
+
+      return `
+      <div class="max-w-3xl mx-auto pb-20 mt-4 md:mt-8">
+        <button onclick="window.changeView('dashboard')" class="text-gray-500 mb-6 flex items-center hover:text-gray-800 font-medium">
+          <i data-lucide="chevron-right" class="rotate-180 w-5 h-5 mr-1"></i> Back to Map
         </button>
 
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8">
-            <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-4 inline-block">
-              Day {lesson.day} • Theory
+        <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+          <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8">
+            <span class="bg-white/20 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-4 inline-block">
+              Day ${lesson.day} • Theory
             </span>
-            <h2 className="text-3xl font-extrabold">{lesson.title}</h2>
+            <h2 class="text-3xl font-extrabold">${lesson.title}</h2>
           </div>
           
-          <div className="p-6 md:p-8 space-y-8 text-gray-700 text-lg">
-            <div className="flex gap-4 items-start bg-pink-50 p-6 rounded-2xl border border-pink-100">
-              <MessageCircle className="text-pink-500 shrink-0 mt-1" size={28} />
-              <p className="leading-relaxed font-medium">{lesson.theory.intro}</p>
+          <div class="p-6 md:p-8 space-y-8 text-gray-700 text-lg">
+            <div class="flex gap-4 items-start bg-pink-50 p-6 rounded-2xl border border-pink-100">
+              <i data-lucide="message-circle" class="text-pink-500 shrink-0 mt-1 w-7 h-7"></i>
+              <p class="leading-relaxed font-medium">${lesson.theory.intro}</p>
             </div>
 
             <div>
-              <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2 text-xl">
-                <BookOpen size={24} className="text-blue-500" /> The Core Concept
+              <h3 class="font-bold text-gray-800 mb-2 flex items-center gap-2 text-xl">
+                <i data-lucide="book-open" class="text-blue-500 w-6 h-6"></i> The Core Concept
               </h3>
-              <p className="text-gray-600">{lesson.theory.concept}</p>
+              <p class="text-gray-600">${lesson.theory.concept}</p>
             </div>
 
             <div>
-              <h3 className="font-bold text-gray-800 mb-4 border-b pb-2 text-xl">Vocabulary & Phrases</h3>
-              <div className="space-y-4">
-                {lesson.theory.examples.map((ex, i) => (
-                  <div key={i} className="bg-white border border-gray-200 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:border-blue-300 transition-colors">
-                    <div>
-                      <p className="text-2xl font-extrabold text-gray-900 mb-1">{ex.kana}</p>
-                      <p className="text-blue-600 font-bold mb-1">{ex.romaji}</p>
-                      <p className="text-gray-600 font-medium">"{ex.eng}"</p>
-                      {ex.context && <p className="text-sm text-gray-500 mt-2 bg-gray-50 p-2 rounded-lg">{ex.context}</p>}
-                    </div>
-                    <AudioButton textKana={ex.kana} />
-                  </div>
-                ))}
+              <h3 class="font-bold text-gray-800 mb-4 border-b pb-2 text-xl">Vocabulary & Phrases</h3>
+              <div class="space-y-4">
+                ${examplesHtml}
               </div>
             </div>
 
-            <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex gap-4 items-start">
-              <Star className="text-green-500 shrink-0 mt-1" size={28} />
+            <div class="bg-green-50 rounded-2xl p-6 border border-green-100 flex gap-4 items-start">
+              <i data-lucide="star" class="text-green-500 shrink-0 mt-1 w-7 h-7"></i>
               <div>
-                <h3 className="font-bold text-green-800 mb-1">Culture Note</h3>
-                <p className="text-green-900">{lesson.theory.culture}</p>
+                <h3 class="font-bold text-green-800 mb-1">Culture Note</h3>
+                <p class="text-green-900">${lesson.theory.culture}</p>
               </div>
             </div>
           </div>
 
-          <div className="p-6 bg-gray-50 border-t flex justify-end">
-            <button 
-              onClick={() => setCurrentView('game')}
-              className="bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 rounded-full font-bold text-lg shadow-lg flex items-center gap-2 transition-transform transform hover:scale-105 w-full md:w-auto justify-center"
-            >
-              Start Practice <ChevronRight />
+          <div class="p-6 bg-gray-50 border-t flex justify-end">
+            <button onclick="window.startGame()" class="bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 rounded-full font-bold text-lg shadow-lg flex items-center gap-2 transition-transform transform hover:scale-105 w-full md:w-auto justify-center">
+              Start Practice (${lesson.exercises.length} Exercises) <i data-lucide="chevron-right" class="w-5 h-5"></i>
             </button>
           </div>
         </div>
       </div>
-    );
-  };
+      `;
+    };
 
-  const renderGame = () => {
-    const lesson = COURSE_DATA.find(d => d.day === activeDay);
-    const exercise = lesson.exercises[gameStep];
-    const isAnswered = selectedAnswer !== null;
-    
-    // For multiple choice, selectedAnswer is the index. For speaking, it's boolean true/false.
-    let isCorrect = false;
-    if (exercise.type === 'multiple_choice' || exercise.type === 'listen') {
-      isCorrect = isAnswered && selectedAnswer === exercise.answer;
-    } else if (exercise.type === 'speak') {
-      isCorrect = isAnswered && selectedAnswer === true;
-    }
+    const renderGame = () => {
+      const lesson = COURSE_DATA.find(d => d.day === state.activeDay);
+      const exercise = lesson.exercises[state.gameStep];
+      const isAnswered = state.selectedAnswer !== null;
+      
+      let isCorrect = false;
+      if (exercise.type === 'multiple_choice' || exercise.type === 'listen') isCorrect = isAnswered && state.selectedAnswer === exercise.answer;
+      else if (exercise.type === 'speak') isCorrect = isAnswered && state.selectedAnswer === true;
 
-    return (
-      <div className="max-w-2xl mx-auto pb-20 mt-4 md:mt-8">
-        {/* Progress Bar */}
-        <div className="mb-8 flex items-center gap-4">
-          <div className="flex-grow bg-gray-200 h-3 rounded-full overflow-hidden">
-            <div 
-              className="bg-green-500 h-full transition-all duration-500"
-              style={{ width: `${(gameStep / lesson.exercises.length) * 100}%` }}
-            />
+      const progressWidth = (state.gameStep / lesson.exercises.length) * 100;
+      const typeLabel = exercise.type === 'speak' ? 'Speaking Exercise' : exercise.type === 'listen' ? 'Listening Exercise' : 'Knowledge Check';
+
+      let exerciseHtml = '';
+      if (exercise.type === 'multiple_choice' || exercise.type === 'listen') {
+        exerciseHtml = `<div class="space-y-4">` + exercise.options.map((opt, i) => {
+          let btnClass = "bg-white border-2 border-gray-200 text-gray-700 hover:border-pink-400 hover:bg-pink-50";
+          let iconHtml = '';
+          if (isAnswered) {
+            if (i === exercise.answer) {
+              btnClass = "bg-green-50 border-2 border-green-500 text-green-800 font-bold";
+              iconHtml = `<i data-lucide="check-circle" class="text-green-500 w-5 h-5"></i>`;
+            } else if (i === state.selectedAnswer) {
+              btnClass = "bg-red-50 border-2 border-red-500 text-red-800";
+              iconHtml = `<i data-lucide="x-circle" class="text-red-500 w-5 h-5"></i>`;
+            } else {
+              btnClass = "bg-gray-50 border-2 border-gray-200 text-gray-400 opacity-50";
+            }
+          }
+          return `
+            <button ${isAnswered ? 'disabled' : ''} onclick="window.handleMultipleChoiceAnswer(${i})" class="w-full p-4 md:p-5 rounded-2xl text-lg transition-all text-left flex justify-between items-center ${btnClass}">
+              <span>${opt}</span>
+              ${iconHtml}
+            </button>
+          `;
+        }).join('') + `</div>`;
+      } else if (exercise.type === 'speak') {
+        const btnClasses = state.isRecording ? 'bg-red-500 scale-110 shadow-lg shadow-red-500/50 animate-pulse' : isAnswered ? 'bg-gray-200 text-gray-400' : 'bg-blue-500 hover:bg-blue-600 text-white shadow-xl hover:scale-105';
+        const msg = state.isRecording ? "Listening... Speak now!" : isAnswered ? "Analysis complete." : "Tap and speak the Japanese phrase";
+        exerciseHtml = `
+          <div class="flex flex-col items-center justify-center mt-8 space-y-6">
+            <button ${isAnswered || state.isRecording ? 'disabled' : ''} 
+              onmousedown="window.handleSpeechRecognition(event)" 
+              ontouchstart="window.handleSpeechRecognition(event)" 
+              class="relative w-32 h-32 rounded-full flex items-center justify-center transition-all ${btnClasses} no-select">
+              <i data-lucide="mic" class="w-12 h-12"></i>
+            </button>
+            <p class="text-gray-500 font-medium text-center">${msg}</p>
           </div>
-          <span className="font-bold text-gray-500 text-sm">{gameStep + 1} / {lesson.exercises.length}</span>
+        `;
+      }
+
+      const feedbackClass = isCorrect ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200';
+      const iconClass = isCorrect ? 'bg-green-500' : 'bg-orange-500';
+      const iconType = isCorrect ? 'check-circle' : 'message-circle';
+      const headingClass = isCorrect ? 'text-green-800' : 'text-orange-800';
+      const textClass = isCorrect ? 'text-green-700' : 'text-orange-700';
+      const btnFeedClass = isCorrect ? 'bg-green-500 hover:bg-green-600' : 'bg-pink-500 hover:bg-pink-600';
+      const btnText = state.gameStep === lesson.exercises.length - 1 ? 'Finish Lesson' : 'Next Question';
+
+      return `
+      <div class="max-w-2xl mx-auto pb-20 mt-4 md:mt-8">
+        <div class="mb-8 flex items-center gap-4">
+          <div class="flex-grow bg-gray-200 h-3 rounded-full overflow-hidden">
+            <div class="bg-green-500 h-full transition-all duration-500" style="width: ${progressWidth}%"></div>
+          </div>
+          <span class="font-bold text-gray-500 text-sm">${state.gameStep + 1} / ${lesson.exercises.length}</span>
         </div>
 
-        <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8 min-h-[450px] flex flex-col border border-gray-100">
-          <div className="flex-grow">
-            
-            {/* Header tag for exercise type */}
-            <div className="flex justify-center mb-6">
-               <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest">
-                 {exercise.type === 'speak' ? 'Speaking Exercise' : exercise.type === 'listen' ? 'Listening Exercise' : 'Knowledge Check'}
+        <div class="bg-white rounded-3xl shadow-xl p-6 md:p-8 min-h-[450px] flex flex-col border border-gray-100">
+          <div class="flex-grow">
+            <div class="flex justify-center mb-6">
+               <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest">
+                 ${typeLabel}
                </span>
             </div>
 
-            {/* Listening Audio Button */}
-            {exercise.type === 'listen' && (
-              <div className="flex justify-center mb-8">
-                 <AudioButton textKana={exercise.audioKana} className="scale-125 transform shadow-md" />
+            ${exercise.type === 'listen' ? `
+              <div class="flex justify-center mb-8">
+                <button onclick="window.playAudio(event, '${exercise.audioKana}')" class="flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-full transition-colors scale-125 transform shadow-md">
+                  <i data-lucide="volume-2" class="w-5 h-5"></i><span class="font-semibold text-sm">Listen</span>
+                </button>
               </div>
-            )}
+            ` : ''}
             
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-8 text-center leading-snug">
-              {exercise.question}
+            <h2 class="text-2xl md:text-3xl font-bold text-gray-800 mb-8 text-center leading-snug">
+              ${exercise.question}
             </h2>
 
-            {/* Multiple Choice Options */}
-            {(exercise.type === 'multiple_choice' || exercise.type === 'listen') && (
-              <div className="space-y-4">
-                {exercise.options.map((opt, i) => {
-                  let btnClass = "bg-white border-2 border-gray-200 text-gray-700 hover:border-pink-400 hover:bg-pink-50";
-                  if (isAnswered) {
-                    if (i === exercise.answer) btnClass = "bg-green-50 border-2 border-green-500 text-green-800 font-bold";
-                    else if (i === selectedAnswer) btnClass = "bg-red-50 border-2 border-red-500 text-red-800";
-                    else btnClass = "bg-gray-50 border-2 border-gray-200 text-gray-400 opacity-50";
-                  }
-
-                  return (
-                    <button
-                      key={i}
-                      disabled={isAnswered}
-                      onClick={() => handleMultipleChoiceAnswer(i)}
-                      className={`w-full p-4 md:p-5 rounded-2xl text-lg transition-all text-left flex justify-between items-center ${btnClass}`}
-                    >
-                      {opt}
-                      {isAnswered && i === exercise.answer && <CheckCircle className="text-green-500" />}
-                      {isAnswered && i === selectedAnswer && i !== exercise.answer && <XCircle className="text-red-500" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Speaking Exercise UI */}
-            {exercise.type === 'speak' && (
-              <div className="flex flex-col items-center justify-center mt-8 space-y-6">
-                <button
-                  disabled={isAnswered || isRecording}
-                  onMouseDown={handleSpeechRecognition}
-                  onTouchStart={handleSpeechRecognition}
-                  className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 scale-110 shadow-lg shadow-red-500/50 animate-pulse' : isAnswered ? 'bg-gray-200 text-gray-400' : 'bg-blue-500 hover:bg-blue-600 text-white shadow-xl hover:scale-105'}`}
-                >
-                  <Mic size={48} />
-                </button>
-                <p className="text-gray-500 font-medium text-center">
-                  {isRecording ? "Listening... Speak now!" : isAnswered ? "Analysis complete." : "Tap and speak the Japanese phrase"}
-                </p>
-              </div>
-            )}
+            ${exerciseHtml}
           </div>
 
-          {/* AI Feedback Area */}
-          <div className={`mt-8 transition-opacity duration-300 ${isAnswered ? 'opacity-100' : 'opacity-0 hidden'}`}>
-            <div className={`p-5 rounded-2xl flex gap-4 items-start ${isCorrect ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
-              <div className={`p-2 rounded-full text-white shrink-0 ${isCorrect ? 'bg-green-500' : 'bg-orange-500'}`}>
-                  {isCorrect ? <CheckCircle /> : <MessageCircle />}
+          <div class="mt-8 transition-opacity duration-300 ${isAnswered ? 'opacity-100' : 'opacity-0 hidden'}">
+            <div class="p-5 rounded-2xl flex gap-4 items-start ${feedbackClass}">
+              <div class="p-2 rounded-full text-white shrink-0 ${iconClass}">
+                  <i data-lucide="${iconType}" class="w-6 h-6"></i>
               </div>
               <div>
-                <h4 className={`font-bold text-lg mb-1 ${isCorrect ? 'text-green-800' : 'text-orange-800'}`}>
-                  {isCorrect ? 'Excellent!' : 'Sensei AI Feedback'}
-                </h4>
-                <p className={isCorrect ? 'text-green-700' : 'text-orange-700'}>
-                  {isCorrect ? "Perfectly executed!" : exercise.feedback_incorrect}
-                </p>
+                <h4 class="font-bold text-lg mb-1 ${headingClass}">${isCorrect ? 'Excellent!' : 'Sensei AI Feedback'}</h4>
+                <p class="${textClass}">${isCorrect ? "Perfectly executed!" : exercise.feedback_incorrect}</p>
               </div>
             </div>
-
-            <button 
-              onClick={nextQuestion}
-              className={`w-full mt-6 py-4 rounded-full font-bold text-lg text-white shadow-lg transition-transform transform hover:scale-105 ${isCorrect ? 'bg-green-500 hover:bg-green-600' : 'bg-pink-500 hover:bg-pink-600'}`}
-            >
-              {gameStep === lesson.exercises.length - 1 ? 'Finish Lesson' : 'Next Question'}
+            <button onclick="window.nextQuestion()" class="w-full mt-6 py-4 rounded-full font-bold text-lg text-white shadow-lg transition-transform transform hover:scale-105 ${btnFeedClass}">
+              ${btnText}
             </button>
           </div>
         </div>
       </div>
-    );
-  };
+      `;
+    };
 
-  const renderResult = () => {
-    const lesson = COURSE_DATA.find(d => d.day === activeDay);
-    const total = lesson.exercises.length;
-    const isPerfect = score === total;
+    const renderResult = () => {
+      const lesson = COURSE_DATA.find(d => d.day === state.activeDay);
+      const total = lesson.exercises.length;
+      const isPerfect = state.score === total;
 
-    return (
-      <div className="max-w-md mx-auto mt-16 text-center px-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-10 border border-gray-100">
-          <div className="w-24 h-24 bg-gradient-to-br from-yellow-200 to-yellow-400 text-yellow-700 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-            <Award size={50} />
+      const mistakesHtml = state.currentMistakes.length > 0 
+        ? `<div class="bg-orange-50 text-orange-800 p-4 rounded-xl mb-6 text-sm">
+             <span class="font-bold block mb-1">To review tomorrow:</span>
+             ${[...new Set(state.currentMistakes)].join(', ')}
+           </div>` 
+        : '';
+
+      return `
+      <div class="max-w-md mx-auto mt-16 text-center px-4">
+        <div class="bg-white rounded-3xl shadow-2xl p-10 border border-gray-100">
+          <div class="w-24 h-24 bg-gradient-to-br from-yellow-200 to-yellow-400 text-yellow-700 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <i data-lucide="award" class="w-12 h-12"></i>
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-800 mb-2">Lesson Complete!</h2>
-          <p className="text-gray-500 mb-8 font-medium">Day {activeDay}: {lesson.topic}</p>
+          <h2 class="text-3xl font-extrabold text-gray-800 mb-2">Session Complete!</h2>
+          <p class="text-gray-500 mb-8 font-medium">Day ${state.activeDay}: ${lesson.topic}</p>
           
-          <div className="text-6xl font-black text-pink-500 mb-2">
-            {score}/{total}
-          </div>
+          <div class="text-6xl font-black text-pink-500 mb-2">${state.score}/${total}</div>
           
-          {currentMistakes.length > 0 && (
-            <div className="bg-orange-50 text-orange-800 p-4 rounded-xl mb-6 text-sm">
-              <span className="font-bold block mb-1">To review tomorrow:</span>
-              {currentMistakes.join(', ')}
-            </div>
-          )}
+          ${mistakesHtml}
 
-          <p className="text-lg font-medium text-gray-700 mb-8">
-            {isPerfect ? "Flawless victory! Your pronunciation is getting amazing. 🌸" : "Great effort! Mistakes show that you are trying."}
+          <p class="text-lg font-medium text-gray-700 mb-8">
+            ${isPerfect ? "Flawless victory! You maintained perfect accuracy over 15+ minutes. 🌸" : "Great effort! Consistency is the key to fluency."}
           </p>
-
-          <button 
-            onClick={() => setCurrentView('dashboard')}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-4 rounded-full font-bold text-lg shadow-lg transition-transform transform hover:scale-105"
-          >
+          <button onclick="window.changeView('dashboard')" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-4 rounded-full font-bold text-lg shadow-lg transition-transform transform hover:scale-105">
             Return to Map
           </button>
         </div>
       </div>
-    );
-  };
+      `;
+    };
 
-  const renderLibrary = () => (
-    <div className="max-w-4xl mx-auto pb-24 mt-4 md:mt-8">
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-3xl p-8 mb-8 shadow-lg">
-        <h1 className="text-3xl font-extrabold mb-2 flex items-center gap-3">
-          <Library size={32} /> Survival Library
-        </h1>
-        <p className="text-indigo-100">Quick references for daily situations in Japan.</p>
-      </div>
-
-      <div className="space-y-8">
-        {/* Restaurant Survival */}
-        <section>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Utensils className="text-orange-500" /> Restaurant & Dining
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  <p className="text-xl font-bold text-gray-900 mb-1">メニュー、おねがいします</p>
-                  <p className="text-sm font-medium text-blue-600">Menyuu, onegai shimasu</p>
-                  <p className="text-gray-500 text-sm mt-1">Menu, please.</p>
-                </div>
-                <AudioButton textKana="メニュー、おねがいします" />
-             </div>
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  <p className="text-xl font-bold text-gray-900 mb-1">おかいけい、おねがいします</p>
-                  <p className="text-sm font-medium text-blue-600">Okaikei, onegai shimasu</p>
-                  <p className="text-gray-500 text-sm mt-1">The bill, please.</p>
-                </div>
-                <AudioButton textKana="おかいけい、おねがいします" />
-             </div>
-          </div>
-        </section>
-
-        {/* Medical / Emergency */}
-        <section>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <HeartPulse className="text-red-500" /> Medical & Help
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-red-50 flex justify-between items-center">
-                <div>
-                  <p className="text-xl font-bold text-gray-900 mb-1">たすけてください</p>
-                  <p className="text-sm font-medium text-red-600">Tasukete kudasai</p>
-                  <p className="text-gray-500 text-sm mt-1">Please help me!</p>
-                </div>
-                <AudioButton textKana="たすけてください" />
-             </div>
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  <p className="text-xl font-bold text-gray-900 mb-1">あたまがいたいです</p>
-                  <p className="text-sm font-medium text-blue-600">Atama ga itai desu</p>
-                  <p className="text-gray-500 text-sm mt-1">My head hurts.</p>
-                </div>
-                <AudioButton textKana="あたまがいたいです" />
-             </div>
-          </div>
-        </section>
-
-        {/* Friendly Interaction */}
-        <section>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Smile className="text-green-500" /> Making Friends
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  <p className="text-xl font-bold text-gray-900 mb-1">いいね！</p>
-                  <p className="text-sm font-medium text-green-600">Ii ne!</p>
-                  <p className="text-gray-500 text-sm mt-1">That's good! / Nice!</p>
-                </div>
-                <AudioButton textKana="いいね！" />
-             </div>
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  <p className="text-xl font-bold text-gray-900 mb-1">ほんとう？</p>
-                  <p className="text-sm font-medium text-blue-600">Hontou?</p>
-                  <p className="text-gray-500 text-sm mt-1">Really?</p>
-                </div>
-                <AudioButton textKana="ほんとう？" />
-             </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-
-  const renderProfile = () => (
-    <div className="max-w-md mx-auto mt-8 md:mt-16 px-4">
-      <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100 text-center">
-        <div className="w-20 h-20 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-6">
-          <User size={40} />
+    const renderLibrary = () => {
+      let html = `
+      <div class="max-w-5xl mx-auto pb-24 mt-4 md:mt-8">
+        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-3xl p-8 mb-10 shadow-lg text-center md:text-left">
+          <h1 class="text-3xl md:text-4xl font-extrabold mb-3 flex items-center justify-center md:justify-start gap-3">
+            <i data-lucide="library" class="w-9 h-9"></i> Comprehensive Survival Guide
+          </h1>
+          <p class="text-indigo-100 text-lg">Master these words and you can navigate 90% of basic interactions in Japan.</p>
         </div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Student Profile</h2>
-        <p className="text-gray-500 mb-8 text-sm">Your progress is saved securely.</p>
-        
-        <div className="text-left mb-8">
-          <label className="block text-sm font-bold text-gray-700 mb-2">Nickname</label>
-          <input 
-            type="text" 
-            value={profileName}
-            onChange={(e) => {
-              setProfileName(e.target.value);
-              saveProgress(completedDays, mistakesRecord); // Auto-save name
-            }}
-            className="w-full border-2 border-gray-200 rounded-xl p-3 text-lg font-bold text-gray-800 focus:border-pink-500 focus:outline-none transition-colors"
-          />
-        </div>
+        <div class="space-y-10">
+      `;
 
-        <div className="bg-gray-50 p-4 rounded-2xl mb-8 flex justify-between items-center text-left">
-          <div>
-            <p className="text-gray-500 text-sm font-bold">Days Mastered</p>
-            <p className="text-2xl font-black text-green-500">{completedDays.length}</p>
+      LIBRARY_DATA.forEach(section => {
+        let itemsHtml = section.items.map(item => `
+          <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="mb-4">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <p class="text-2xl font-extrabold text-gray-900 mb-1">${item.kana}</p>
+                  <p class="text-md font-bold text-blue-600">${item.romaji}</p>
+                </div>
+                <button onclick="window.playAudio(event, '${item.kana}')" class="shrink-0 flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-full transition-colors">
+                  <i data-lucide="volume-2" class="w-4 h-4"></i><span class="font-semibold text-xs">Listen</span>
+                </button>
+              </div>
+              <p class="text-gray-800 font-semibold mb-3">"${item.eng}"</p>
+              <div class="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <span class="text-xs font-bold text-pink-500 uppercase tracking-wider block mb-1">Teacher's Note</span>
+                <p class="text-gray-600 text-sm">${item.context}</p>
+              </div>
+            </div>
           </div>
-          <Award size={32} className="text-yellow-400" />
-        </div>
+        `).join('');
 
-        <button 
-          onClick={handleSwitchAccount}
-          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-full font-bold shadow-sm transition-colors flex justify-center items-center gap-2"
-        >
-          <LogOut size={20} /> Switch Account / Start Fresh
-        </button>
-      </div>
-    </div>
-  );
+        html += `
+          <section>
+            <h2 class="text-2xl font-bold text-gray-800 mb-5 flex items-center gap-2 border-b-2 border-gray-100 pb-2">
+              <i data-lucide="${section.icon}" class="${section.iconColor} w-6 h-6"></i> ${section.category}
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              ${itemsHtml}
+            </div>
+          </section>
+        `;
+      });
 
-  // --- MAIN RENDER ---
+      html += `</div></div>`;
+      return html;
+    };
 
-  return (
-    <div className="min-h-screen bg-slate-50 font-sans text-gray-800 selection:bg-pink-200">
-      {/* Navigation Bar */}
-      <nav className="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 pb-safe md:relative md:border-b md:border-t-0 z-50">
-        <div className="max-w-4xl mx-auto flex justify-around md:justify-center md:gap-16 p-3 md:p-4">
-          <button 
-            onClick={() => setCurrentView('dashboard')}
-            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'dashboard' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}`}
-          >
-            <Home size={24} />
-            <span className="text-[10px] md:text-xs font-bold uppercase tracking-wide">Map</span>
-          </button>
-          <button 
-            onClick={() => setCurrentView('library')}
-            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'library' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}`}
-          >
-            <Library size={24} />
-            <span className="text-[10px] md:text-xs font-bold uppercase tracking-wide">Survival</span>
-          </button>
-          <button 
-            onClick={() => setCurrentView('profile')}
-            className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'profile' ? 'text-pink-500' : 'text-gray-400 hover:text-gray-800'}`}
-          >
-            <User size={24} />
-            <span className="text-[10px] md:text-xs font-bold uppercase tracking-wide">Profile</span>
+    const renderProfile = () => `
+      <div class="max-w-md mx-auto mt-8 md:mt-16 px-4 pb-20">
+        <div class="bg-white rounded-3xl shadow-xl p-8 border border-gray-100 text-center">
+          <div class="w-20 h-20 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <i data-lucide="user" class="w-10 h-10"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Student Profile</h2>
+          <p class="text-gray-500 mb-8 text-sm">Your progress is saved securely.</p>
+          
+          <div class="text-left mb-8">
+            <label class="block text-sm font-bold text-gray-700 mb-2">Nickname</label>
+            <input 
+              type="text" 
+              value="${state.profileName}"
+              onchange="window.updateProfileName(this.value)"
+              class="w-full border-2 border-gray-200 rounded-xl p-3 text-lg font-bold text-gray-800 focus:border-pink-500 focus:outline-none transition-colors"
+            />
+          </div>
+
+          <div class="bg-gray-50 p-4 rounded-2xl mb-8 flex justify-between items-center text-left">
+            <div>
+              <p class="text-gray-500 text-sm font-bold">Days Mastered</p>
+              <p class="text-2xl font-black text-green-500">${state.completedDays.length}</p>
+            </div>
+            <i data-lucide="award" class="text-yellow-400 w-8 h-8"></i>
+          </div>
+
+          <button onclick="window.handleSwitchAccount()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-4 rounded-full font-bold shadow-sm transition-colors flex justify-center items-center gap-2">
+            <i data-lucide="log-out" class="w-5 h-5"></i> Switch Account / Start Fresh
           </button>
         </div>
-      </nav>
+      </div>
+    `;
 
-      {/* Main Content Area */}
-      <main className="p-4 md:p-8 pt-4 md:pt-8 pb-28 md:pb-8">
-        {currentView === 'dashboard' && renderDashboard()}
-        {currentView === 'theory' && renderTheory()}
-        {currentView === 'game' && renderGame()}
-        {currentView === 'result' && renderResult()}
-        {currentView === 'library' && renderLibrary()}
-        {currentView === 'profile' && renderProfile()}
-      </main>
+    // Initialize application immediately
+    initAuth();
 
-    </div>
-  );
-}
+  </script>
+</body>
+</html>
