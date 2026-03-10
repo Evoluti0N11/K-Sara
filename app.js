@@ -1,10 +1,10 @@
 // --- APPLICATION STATE ---
 const state = {
-  profileName: "Sara",
+  profileName: null, // Initially null to force selection
   isDarkMode: localStorage.getItem('sara_theme') === 'dark',
   hangulScale: 1,
   isTransitioning: false, 
-  currentView: 'profile_select', // Parte in Modalità Selezione Stile Netflix
+  currentView: 'profile_select', 
   activeDay: 1,
   completedDays: [],
   mistakesRecord: {},
@@ -22,6 +22,7 @@ const state = {
   newlyUnlockedLocation: null,
   wotdIndex: 0,
   
+  // New Mechanics State
   builderSelection: [],
   matchingState: { selectedId: null, matched: [] },
   matchingSetup: null
@@ -35,6 +36,7 @@ if (state.isDarkMode) {
 let myMap = null;
 let speechTimeout = null;
 
+// --- HELPERS ---
 window.haptic = (ms = 40) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
 window.toggleDarkMode = () => {
@@ -51,7 +53,11 @@ window.updateHangulSize = (val) => {
     saveProgress(state.completedDays, state.mistakesRecord);
 };
 
-// --- DATA & SAVING LOGIC (LocalStorage Native) ---
+window.renderHangul = (text) => {
+  return `<span class="korean-click" style="font-family: 'Noto Sans KR', sans-serif;" onclick="window.playAudio(event, '${text}')" title="Tocca per ascoltare la pronuncia">${text}</span>`;
+};
+
+// --- DATA & SAVING LOGIC ---
 const computeStreak = (days) => {
   if (!days || days.length === 0) return 0;
   const sorted = [...days].sort((a, b) => a - b);
@@ -95,7 +101,10 @@ const loadLocalProgress = () => {
       const data = JSON.parse(saved);
       state.completedDays = data.completedDays || [];
       state.mistakesRecord = data.mistakesRecord || {};
-      if (data.profileName) state.profileName = data.profileName;
+      if (data.profileName) {
+         state.profileName = data.profileName;
+         state.currentView = 'dashboard';
+      }
       if (data.hangulScale) { state.hangulScale = data.hangulScale; document.documentElement.style.setProperty('--hangul-scale', state.hangulScale); }
       state.mapUnlockSeen = data.mapUnlockSeen || [];
     }
@@ -134,7 +143,7 @@ window.unlockDayWithCode = (code) => {
     } else { showSaveToast("Codice Segreto non valido! Riprova.", true); }
 };
 
-// --- AUDIO E MIC ---
+// --- AUDIO & FALLBACK LOGIC ---
 window.playAudio = (e, textHangul) => {
   if (e) { e.stopPropagation(); e.preventDefault(); }
   window.haptic(30);
@@ -259,7 +268,7 @@ window.initMap = () => {
     });
 };
 
-// --- LOGICA ESERCIZI ---
+// --- GAME HANDLERS ---
 const setupSpecialExercise = (ex) => {
     if (ex.type === 'matching') {
         const koOptions = ex.pairs.map((p, i) => ({ id: i, text: p.ko, type: 'ko' })).sort(() => 0.5 - Math.random());
@@ -337,14 +346,7 @@ window.nextQuestion = () => {
   renderApp();
 };
 
-// --- NAVIGAZIONE ---
-window.enterApp = () => {
-    window.haptic(40);
-    state.isTransitioning = true;
-    renderApp();
-    setTimeout(() => { state.currentView = 'dashboard'; state.isTransitioning = false; renderApp(); }, 400);
-};
-
+// --- NAVIGATION ---
 window.changeView = (view) => {
   window.haptic(20); state.isTransitioning = true; renderApp();
   setTimeout(() => { state.currentView = view; state.isTransitioning = false; renderApp(); }, 300);
@@ -362,22 +364,28 @@ window.startGame = () => {
   setTimeout(() => { state.currentView = 'game'; state.isTransitioning = false; renderApp(); }, 300);
 };
 
-// --- RENDERERS (INTERFACCIA) ---
+window.loginProfile = () => {
+  state.profileName = 'Sara';
+  saveProgress(state.completedDays, state.mistakesRecord);
+  window.changeView('dashboard');
+};
+
+// --- RENDERERS ---
 const renderProfileSelect = () => {
-    return `
-    <div class="fixed inset-0 netflix-bg z-[99999] flex flex-col items-center justify-center text-white animate-fadein p-6 text-center">
-      <h1 class="text-3xl md:text-5xl font-black mb-10 tracking-wide text-gray-100 drop-shadow-lg">Chi sta studiando?</h1>
-      <div class="flex gap-6 md:gap-10">
-        <div class="flex flex-col items-center cursor-pointer group outline-none" onclick="window.enterApp()">
-          <div class="w-28 h-28 md:w-40 md:h-40 bg-pink-500 rounded-xl shadow-2xl border-4 border-transparent group-hover:border-white transition-all duration-300 flex items-center justify-center overflow-hidden transform group-hover:scale-105">
-             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sara&backgroundColor=f472b6" alt="Sara" class="w-full h-full object-cover">
-          </div>
-          <span class="mt-4 text-gray-400 group-hover:text-white font-black text-xl transition-colors">Sara</span>
-        </div>
-      </div>
-      <button class="mt-16 text-gray-500 border border-gray-600 px-6 py-2 rounded-full font-bold uppercase tracking-widest text-xs hover:bg-gray-800 hover:text-white transition-colors" onclick="alert('Funzione Gestisci Profili Bloccata!')">Gestisci Profili</button>
-    </div>
-    `;
+   return `
+   <div class="h-[100dvh] flex flex-col items-center justify-center p-4 bg-gradient-to-br from-pink-50 to-blue-50 relative">
+     <div class="absolute inset-0 z-0 pointer-events-none opacity-20 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMiIgZmlsbD0iI2QxZDVkYiIvPjwvc3ZnPg==')]"></div>
+     <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center max-w-sm w-full relative z-10 border border-pink-100 animate-pop">
+       <div class="w-24 h-24 bg-pink-100 text-pink-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+         <i data-lucide="sparkles" class="w-10 h-10"></i>
+       </div>
+       <h1 class="text-3xl font-black mb-2 text-gray-800">Annyeong! 👋</h1>
+       <p class="text-gray-500 mb-8 font-bold">Seleziona il tuo profilo per entrare nel mondo del Coreano.</p>
+       <button onclick="window.loginProfile()" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-black py-4 rounded-2xl transition-all hover:scale-105 shadow-xl shadow-pink-500/30 flex items-center justify-center gap-3 outline-none">
+         <i data-lucide="user" class="w-5 h-5"></i> Ciao, sono Sara
+       </button>
+     </div>
+   </div>`;
 };
 
 const renderNav = () => {
@@ -385,7 +393,7 @@ const renderNav = () => {
     { view: 'dashboard', icon: 'map-pin', label: 'Percorso' }, { view: 'explore', icon: 'compass', label: 'Korea Tour' },
     { view: 'library', icon: 'book-marked', label: 'Guida Base' }, { view: 'profile', icon: 'circle-user-round', label: 'Profilo' },
   ];
-  return `<nav class="fixed bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 pb-safe z-[9999] shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)] md:relative md:border-b md:border-t-0 flex-shrink-0"><div class="max-w-4xl mx-auto flex justify-between md:justify-center md:gap-16 px-4 py-2 md:p-5">${navItems.map(item => `<button onclick="window.changeView('${item.view}')" class="flex flex-col items-center gap-1 transition-all min-w-[60px] ${state.currentView === item.view ? 'scale-105' : 'hover:scale-105'}"><div class="${state.currentView === item.view ? 'bg-pink-100 text-pink-600' : 'text-gray-400 hover:text-blue-500'} p-2 rounded-2xl transition-all"><i data-lucide="${item.icon}" class="w-6 h-6"></i></div><span class="text-[10px] md:text-xs font-black uppercase tracking-widest ${state.currentView === item.view ? 'text-pink-600' : 'text-gray-400'}">${item.label}</span></button>`).join('')}</div></nav>`;
+  return `<nav class="fixed bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-blue-100 pb-safe z-[9999] shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)] md:relative md:border-b md:border-t-0 flex-shrink-0"><div class="max-w-4xl mx-auto flex justify-between md:justify-center md:gap-16 px-4 py-2 md:p-5">${navItems.map(item => `<button onclick="window.changeView('${item.view}')" class="flex flex-col items-center gap-1 transition-all min-w-[60px] ${state.currentView === item.view ? 'scale-105' : 'hover:scale-105'}"><div class="${state.currentView === item.view ? 'bg-pink-100 text-pink-600' : 'text-gray-400 hover:text-blue-500'} p-2 rounded-2xl transition-all"><i data-lucide="${item.icon}" class="w-6 h-6"></i></div><span class="text-[10px] md:text-xs font-black uppercase tracking-widest ${state.currentView === item.view ? 'text-pink-600' : 'text-gray-400'}">${item.label}</span></button>`).join('')}</div></nav>`;
 };
 
 const renderDashboard = () => {
@@ -404,33 +412,16 @@ const renderDashboard = () => {
           <div class="w-full max-w-md bg-white/20 h-4 rounded-full overflow-hidden backdrop-blur-sm border border-white/30"><div class="bg-white h-full transition-all" style="width: ${totalProgress}%"></div></div>
         </div>
         <div class="flex gap-3 w-full md:w-auto z-10 shrink-0">
-           <div class="flex-1 flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl shadow-inner"><i data-lucide="flame" class="${state.streak > 0 ? 'text-orange-400 animate-pulse' : 'text-white/60'} mb-1 w-6 h-6"></i><span class="font-black text-xs">${state.streak} Streak</span></div>
+           <div class="flex-1 flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl shadow-inner"><i data-lucide="flame" class="${state.streak > 0 ? 'text-orange-400 animate-pulse' : 'text-gray-300'} mb-1 w-6 h-6"></i><span class="font-black text-xs">${state.streak} Streak</span></div>
            <div class="flex-1 flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl shadow-inner"><i data-lucide="award" class="text-yellow-300 mb-1 w-6 h-6"></i><span class="font-black text-xs">${state.completedDays.length} / 45</span></div>
            <div class="flex-1 flex flex-col items-center justify-center bg-white/20 p-3 rounded-2xl shadow-inner"><i data-lucide="zap" class="text-yellow-200 mb-1 w-6 h-6"></i><span class="font-black text-xs">${state.xp} XP</span></div>
         </div>
       </header>
       <div class="bg-white rounded-2xl p-4 md:p-5 mb-5 border shadow-sm flex items-center gap-4"><div class="p-2 bg-yellow-50 rounded-xl shrink-0"><i data-lucide="zap" class="w-5 h-5 text-yellow-500"></i></div><div class="flex-1"><div class="flex justify-between items-center mb-1.5"><span class="font-black text-gray-800 text-sm">${xpData.title}</span><span class="text-xs font-black text-gray-400">${state.xp} XP${xpData.next ? ` / ${xpData.next}` : ''}</span></div><div class="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden"><div class="xp-bar bg-gradient-to-r from-yellow-400 to-pink-500 h-full rounded-full" style="width:${xpProgress}%"></div></div></div></div>
-      
-      <!-- Word of the day with Timer -->
-      <div class="wotd-card rounded-2xl md:rounded-[1.5rem] p-5 mb-5 border border-pink-100 flex flex-col md:flex-row justify-between md:items-center gap-4 shadow-sm relative overflow-hidden">
-        <div class="flex items-center gap-3">
-            <div class="text-2xl">✨</div>
-            <div>
-                <p class="text-[10px] font-black text-pink-500 uppercase flex items-center gap-2">
-                    ${wotd.category} — Parola del Giorno
-                    <span class="bg-white/50 px-2 py-0.5 rounded-md text-pink-600 flex items-center gap-1 shadow-sm border border-white/50"><i data-lucide="clock" class="w-3 h-3"></i> <span id="wotd-timer">Caricamento...</span></span>
-                </p>
-                <p class="text-2xl font-black text-gray-900" style="font-family:'Noto Sans KR'">${wotd.hangul}</p>
-                <p class="text-xs font-bold text-blue-500">${wotd.romaji} — <span class="text-gray-600">${wotd.eng}</span></p>
-            </div>
-        </div>
-        <button onclick="window.playAudio(event,'${wotd.hangul}')" class="shrink-0 bg-white border-2 border-pink-200 text-pink-500 p-3 rounded-2xl shadow-sm hover:scale-110 outline-none"><i data-lucide="volume-2" class="w-5 h-5"></i></button>
-      </div>
-
-      ${nextDay ? `<div class="bg-gray-900 rounded-2xl md:rounded-[1.5rem] p-5 mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl"><div class="flex items-center gap-3"><div class="p-2.5 bg-pink-500 rounded-xl shrink-0"><i data-lucide="play" class="w-5 h-5 text-white"></i></div><div><p class="text-gray-400 text-[10px] font-black uppercase">Prossima Lezione</p><p class="font-black text-white text-base">${window.COURSE_DATA.find(d => d.day === nextDay)?.title}</p></div></div><button onclick="window.startDay(${nextDay})" class="bg-pink-500 text-white w-full md:w-auto px-6 py-3 rounded-xl font-black shadow-lg hover:scale-105 flex justify-center items-center gap-2">Inizia Ora <i data-lucide="arrow-right" class="w-5 h-5"></i></button></div>` : ``}
-      
-      <div class="bg-white rounded-2xl p-5 mb-6 border border-gray-100 shadow-sm"><div class="flex items-center justify-between mb-3"><h3 class="font-black text-gray-800 flex items-center gap-2 text-sm"><i data-lucide="map-pin" class="w-4 h-4 text-pink-500"></i> Korea Tour Sbloccato</h3><span class="text-xs font-black text-pink-500">${window.MAP_REGIONS.filter(r => state.completedDays.includes(r.unlocksAtDay)).length} / ${window.MAP_REGIONS.length}</span></div><div class="flex gap-1.5 flex-wrap">${window.MAP_REGIONS.map(r => `<span class="text-xl ${state.completedDays.includes(r.unlocksAtDay) ? '' : 'grayscale opacity-30'}">${r.icon}</span>`).join('')}</div></div>
-      <div class="bg-white rounded-2xl md:rounded-[2rem] korean-shadow p-5 md:p-10 mb-8 border border-gray-100 relative z-10"><h2 class="text-2xl md:text-3xl font-black text-gray-800 flex items-center gap-3 border-b-2 border-gray-100 pb-4 mb-6"><i data-lucide="map" class="text-blue-400 w-6 h-6"></i> Syllabus Formativo</h2><div class="space-y-6 md:space-y-8 relative before:absolute before:inset-0 before:ml-[1.35rem] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 md:before:w-1.5 before:bg-gradient-to-b before:from-pink-200 before:via-blue-200 before:to-gray-200 before:rounded-full">`;
+      <div class="wotd-card rounded-2xl md:rounded-[1.5rem] p-5 mb-5 border flex justify-between items-center gap-4"><div class="flex items-center gap-3"><div class="text-2xl">✨</div><div><p class="text-[10px] font-black text-pink-500 uppercase">${wotd.category} — Parola del Giorno</p><p class="text-2xl font-black text-gray-900" style="font-family:'Noto Sans KR'">${wotd.hangul}</p><p class="text-xs font-bold text-blue-500">${wotd.romaji} — <span class="text-gray-600">${wotd.eng}</span></p></div></div><button onclick="window.playAudio(event,'${wotd.hangul}')" class="shrink-0 bg-white border-2 border-pink-200 text-pink-500 p-3 rounded-2xl shadow-sm hover:scale-110"><i data-lucide="volume-2" class="w-5 h-5"></i></button></div>
+      ${nextDay ? `<div class="bg-gray-900 rounded-2xl md:rounded-[1.5rem] p-5 mb-6 flex items-center justify-between gap-4 shadow-xl"><div class="flex items-center gap-3"><div class="p-2.5 bg-pink-500 rounded-xl shrink-0"><i data-lucide="play" class="w-5 h-5 text-white"></i></div><div><p class="text-gray-400 text-[10px] font-black uppercase">Prossima Lezione</p><p class="font-black text-white text-base">${window.COURSE_DATA.find(d => d.day === nextDay)?.title}</p></div></div><button onclick="window.startDay(${nextDay})" class="bg-pink-500 text-white px-6 py-3 rounded-xl font-black shadow-lg hover:scale-105 flex items-center gap-2">Inizia Ora <i data-lucide="arrow-right" class="w-5 h-5"></i></button></div>` : ``}
+      <div class="bg-white rounded-2xl p-5 mb-6 border shadow-sm"><div class="flex items-center justify-between mb-3"><h3 class="font-black text-gray-800 flex items-center gap-2 text-sm"><i data-lucide="map-pin" class="w-4 h-4 text-pink-500"></i> Korea Tour Sbloccato</h3><span class="text-xs font-black text-pink-500">${window.MAP_REGIONS.filter(r => state.completedDays.includes(r.unlocksAtDay)).length} / ${window.MAP_REGIONS.length}</span></div><div class="flex gap-1.5 flex-wrap">${window.MAP_REGIONS.map(r => `<span class="text-xl ${state.completedDays.includes(r.unlocksAtDay) ? '' : 'grayscale opacity-30'}">${r.icon}</span>`).join('')}</div></div>
+      <div class="bg-white rounded-2xl md:rounded-[2rem] korean-shadow p-5 md:p-10 mb-8 border relative z-10"><h2 class="text-2xl md:text-3xl font-black text-gray-800 flex items-center gap-3 border-b-2 pb-4 mb-6"><i data-lucide="map" class="text-blue-400 w-6 h-6"></i> Syllabus Formativo</h2><div class="space-y-6 md:space-y-8 relative before:absolute before:inset-0 before:ml-[1.35rem] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 md:before:w-1.5 before:bg-gradient-to-b before:from-pink-200 before:via-blue-200 before:to-gray-200 before:rounded-full">`;
 
     window.COURSE_DATA.forEach(dayData => {
       const isCompleted = state.completedDays.includes(dayData.day);
@@ -439,22 +430,30 @@ const renderDashboard = () => {
       let circleClass = isCompleted ? "bg-blue-500 text-white shadow-md border-blue-100" : isLocked ? "bg-gray-200 text-gray-400 border-white" : "bg-pink-500 text-white scale-110 shadow-pink-500/40 border-white";
       let circleContent = isCompleted ? `<i data-lucide="check" class="w-5 h-5"></i>` : dayData.day;
       let badgeHtml = isCompleted && !needsReview ? `<span class="text-[10px] font-black text-blue-700 bg-blue-100 px-3 py-1 rounded-full uppercase">Completato</span>` : needsReview ? `<span class="text-[10px] font-black text-orange-700 bg-orange-100 px-3 py-1 rounded-full uppercase flex gap-1"><i data-lucide="alert-circle" class="w-3 h-3"></i> Ripasso</span>` : isLocked ? `<span class="text-[10px] font-black text-gray-400 bg-gray-100 px-3 py-1 rounded-full uppercase">Bloccato</span>` : '';
-      let btnHtml = !isLocked ? `<button onclick="window.startDay(${dayData.day})" class="p-3 rounded-full hover:scale-110 shrink-0 ${isCompleted ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-pink-500 text-white shadow-md'} flex items-center justify-center outline-none">${needsReview ? '<i data-lucide="rotate-ccw" class="w-5 h-5"></i>' : '<i data-lucide="play" class="w-5 h-5"></i>'}</button>` : '';
+      let btnHtml = !isLocked ? `<button onclick="window.startDay(${dayData.day})" class="p-3 rounded-full hover:scale-110 shrink-0 ${isCompleted ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-pink-500 text-white shadow-md'} flex items-center justify-center">${needsReview ? '<i data-lucide="rotate-ccw" class="w-5 h-5"></i>' : '<i data-lucide="play" class="w-5 h-5"></i>'}</button>` : '';
 
-      html += `<div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group ${isLocked ? 'opacity-60 grayscale-[30%]' : ''}"><div class="flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 font-black text-base md:text-lg border-4 ${circleClass}">${circleContent}</div><div class="w-[calc(100%-3.5rem)] md:w-[calc(50%-3rem)] bg-white p-5 rounded-2xl shadow-sm border-2 border-gray-50 transition-all hover:shadow-lg cursor-pointer" onclick="if(!${isLocked}) window.startDay(${dayData.day})"><div class="flex justify-between items-center gap-3"><div class="flex-1"><span class="text-[10px] font-black text-pink-500 uppercase block mb-1">${dayData.topic}</span><h3 class="font-black text-gray-800 leading-tight mb-2 text-lg">${dayData.title}</h3><div class="flex flex-wrap gap-2 mt-2">${badgeHtml}</div></div>${btnHtml}</div></div></div>`;
+      html += `<div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group ${isLocked ? 'opacity-60 grayscale-[30%]' : ''}"><div class="flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 font-black text-base md:text-lg border-4 ${circleClass}">${circleContent}</div><div class="w-[calc(100%-3.5rem)] md:w-[calc(50%-3rem)] bg-white p-5 rounded-2xl shadow-sm border-2 border-gray-50 transition-all hover:shadow-lg cursor-pointer" onclick="if(!${isLocked}) window.startDay(${dayData.day})"><div class="flex justify-between items-center gap-3"><div class="flex-1"><span class="text-[10px] font-black text-pink-500 uppercase block mb-1">${dayData.topic}</span><h3 class="font-black text-gray-800 leading-tight mb-2 text-lg">${dayData.title}</h3><p class="text-xs text-gray-400 font-bold mb-2 flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i> ${dayData.exercises.length} Esercizi</p><div class="flex flex-wrap gap-2 mt-2">${badgeHtml}</div></div>${btnHtml}</div></div></div>`;
     });
     return html + `</div></div></div>`;
 };
 
 const renderTheory = () => {
     const lesson = window.COURSE_DATA.find(d => d.day === state.activeDay);
-    const examplesHtml = lesson.theory.examples.map(ex => `<div class="bg-white border-2 border-gray-100 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:border-pink-200 transition-all"><div><p class="text-2xl font-black text-gray-900 mb-1 hangul-display">${window.renderHangul(ex.hangul)}</p><p class="text-blue-500 font-bold text-sm mb-1">${ex.romaji}</p><p class="text-gray-700 font-black text-base mb-2">"${ex.eng}"</p>${ex.context ? `<p class="text-xs text-gray-500 bg-gray-50 p-2.5 rounded-xl font-bold border border-gray-100">${ex.context}</p>` : ''}</div><button onclick="window.playAudio(event, '${ex.hangul}')" class="flex items-center justify-center gap-2 bg-blue-50 border border-blue-100 text-blue-700 px-5 py-3 rounded-xl hover:scale-105 shrink-0 outline-none"><i data-lucide="volume-2" class="w-5 h-5"></i><span class="font-black text-sm">Ascolta</span></button></div>`).join('');
+    const examplesHtml = lesson.theory.examples.map(ex => `<div class="bg-white border-2 border-gray-100 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:border-pink-200 transition-all"><div><p class="text-2xl font-black text-gray-900 mb-1 hangul-display">${window.renderHangul(ex.hangul)}</p><p class="text-blue-500 font-bold text-sm mb-1">${ex.romaji}</p><p class="text-gray-700 font-black text-base mb-2">"${ex.eng}"</p>${ex.context ? `<p class="text-xs text-gray-500 bg-gray-50 p-2.5 rounded-xl font-bold border">${ex.context}</p>` : ''}</div><button onclick="window.playAudio(event, '${ex.hangul}')" class="flex items-center justify-center gap-2 bg-blue-50 text-blue-700 px-5 py-3 rounded-xl hover:scale-105 shrink-0"><i data-lucide="volume-2" class="w-5 h-5"></i><span class="font-black text-sm">Ascolta</span></button></div>`).join('');
     
-    return `<div class="max-w-3xl mx-auto animate-pop"><button onclick="window.changeView('dashboard')" class="text-gray-500 mb-4 flex items-center font-black text-sm hover:bg-gray-100 px-3 py-2 rounded-lg outline-none"><i data-lucide="arrow-left" class="w-5 h-5 mr-2"></i> Torna alla Mappa</button><div class="bg-white rounded-2xl korean-shadow overflow-hidden border border-blue-50"><div class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 md:p-12 relative overflow-hidden"><span class="bg-white/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase mb-4 inline-block shadow-sm border border-white/30">Giorno ${lesson.day} • Teoria</span><h2 class="text-2xl md:text-4xl font-black relative z-10">${lesson.title}</h2></div><div class="p-5 md:p-10 space-y-8 text-gray-700"><div class="flex gap-4 bg-pink-50 p-5 rounded-2xl border border-pink-100 shadow-sm"><i data-lucide="quote" class="text-pink-500 shrink-0 w-8 h-8"></i><p class="font-bold text-pink-900 text-base">${lesson.theory.intro}</p></div><div><h3 class="font-black text-gray-800 mb-4 flex items-center gap-3 text-xl"><div class="p-2 bg-blue-100 rounded-xl text-blue-600"><i data-lucide="brain" class="w-5 h-5"></i></div> Il Concetto Base</h3><p class="font-bold text-base">${lesson.theory.concept}</p></div>
+    return `<div class="max-w-3xl mx-auto animate-pop"><button onclick="window.changeView('dashboard')" class="text-gray-500 mb-4 flex items-center font-black text-sm hover:bg-gray-100 px-3 py-2 rounded-lg"><i data-lucide="arrow-left" class="w-5 h-5 mr-2"></i> Torna alla Mappa</button><div class="bg-white rounded-2xl korean-shadow overflow-hidden border border-blue-50"><div class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 md:p-12 relative overflow-hidden"><span class="bg-white/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase mb-4 inline-block shadow-sm border border-white/30">Giorno ${lesson.day} • Teoria</span><h2 class="text-2xl md:text-4xl font-black relative z-10">${lesson.title}</h2></div><div class="p-5 md:p-10 space-y-8 text-gray-700"><div class="flex gap-4 bg-pink-50 p-5 rounded-2xl border border-pink-100 shadow-sm"><i data-lucide="quote" class="text-pink-500 shrink-0 w-8 h-8"></i><p class="font-bold text-pink-900 text-base">${lesson.theory.intro}</p></div><div><h3 class="font-black text-gray-800 mb-4 flex items-center gap-3 text-xl"><div class="p-2 bg-blue-100 rounded-xl text-blue-600"><i data-lucide="brain" class="w-5 h-5"></i></div> Il Concetto Base</h3><p class="font-bold text-base">${lesson.theory.concept}</p></div>
     
-    ${lesson.day <= 5 ? `<div class="bg-amber-50 rounded-2xl p-5 md:p-6 border-2 border-amber-200 flex gap-4 items-start shadow-sm"><span class="text-2xl shrink-0">📌</span><div><h3 class="font-black text-amber-900 mb-1 text-base md:text-lg">Regola d'Oro: Formale vs Informale</h3><p class="text-amber-800 font-bold text-sm md:text-base leading-relaxed">Con <strong>sconosciuti, negozianti, taxisti</strong> → usa sempre le frasi con <strong>-요 (-yo)</strong> o <strong>-니다 (-nida)</strong> alla fine. Con <strong>amici coreani della tua età</strong> → puoi togliere il -요. Nei K-Drama si mischiano entrambi. Per i tuoi primi giorni in Corea: usa sempre la forma con -요 e non sbagli mai! 🙏</p></div></div>` : ''}
-
-    <div><h3 class="font-black text-gray-800 mb-4 text-xl border-b-2 pb-3 border-gray-100">Frasi Chiave 📝</h3><div class="space-y-4">${examplesHtml}</div></div>${lesson.theory.builderRule ? `<div class="bg-indigo-50 rounded-2xl p-5 border border-indigo-100 flex gap-4 shadow-sm"><i data-lucide="link" class="text-indigo-500 shrink-0 w-8 h-8"></i><div><h3 class="font-black text-indigo-900 mb-1 text-lg">Conversation Builder</h3><p class="font-bold text-sm">${lesson.theory.builderRule}</p></div></div>` : ''}${lesson.theory.buildingBlocks ? `<div class="bg-yellow-50 rounded-2xl p-5 border border-yellow-200 flex gap-4 shadow-sm"><i data-lucide="puzzle" class="text-yellow-500 shrink-0 w-8 h-8"></i><div><h3 class="font-black text-yellow-900 mb-1 text-lg">Mattoncini della Frase 🧩</h3><p class="font-bold text-sm">${lesson.theory.buildingBlocks}</p></div></div>` : ''}</div><div class="p-5 bg-gray-50 border-t-2 border-gray-100 flex justify-end"><button onclick="window.startGame()" class="bg-pink-500 text-white px-6 py-4 rounded-xl font-black text-lg shadow-lg hover:scale-105 flex items-center gap-3 w-full md:w-auto outline-none">Inizia la Pratica (${lesson.exercises.length} Es) <i data-lucide="play-circle" class="w-6 h-6"></i></button></div></div></div>`;
+    ${lesson.day <= 5 ? `
+    <div class="bg-amber-50 rounded-2xl md:rounded-[1.5rem] p-5 md:p-6 border-2 border-amber-200 flex gap-4 items-start shadow-sm mt-6">
+      <span class="text-2xl shrink-0">📌</span>
+      <div>
+        <h3 class="font-black text-amber-900 mb-1 text-base md:text-lg">Regola d'Oro: Formale vs Informale</h3>
+        <p class="text-amber-800 font-bold text-sm md:text-base leading-relaxed">Con <strong>sconosciuti, negozianti, taxisti</strong> → usa sempre le frasi con <strong>-요 (-yo)</strong> o <strong>-니다 (-nida)</strong> alla fine. Con <strong>amici coreani della tua età</strong> → puoi togliere il -요. Nei K-Drama si mischiano entrambi. Per i tuoi primi giorni in Corea: usa sempre la forma con -요 e non sbagli mai! 🙏</p>
+      </div>
+    </div>
+    ` : ''}
+    
+    <div><h3 class="font-black text-gray-800 mb-4 text-xl border-b-2 pb-3 border-gray-100">Frasi Chiave 📝</h3><div class="space-y-4">${examplesHtml}</div></div>${lesson.theory.builderRule ? `<div class="bg-indigo-50 rounded-2xl p-5 border border-indigo-100 flex gap-4 shadow-sm"><i data-lucide="link" class="text-indigo-500 shrink-0 w-8 h-8"></i><div><h3 class="font-black text-indigo-900 mb-1 text-lg">Conversation Builder</h3><p class="font-bold text-sm">${lesson.theory.builderRule}</p></div></div>` : ''}${lesson.theory.buildingBlocks ? `<div class="bg-yellow-50 rounded-2xl p-5 border border-yellow-200 flex gap-4 shadow-sm"><i data-lucide="puzzle" class="text-yellow-500 shrink-0 w-8 h-8"></i><div><h3 class="font-black text-yellow-900 mb-1 text-lg">Mattoncini della Frase 🧩</h3><p class="font-bold text-sm">${lesson.theory.buildingBlocks}</p></div></div>` : ''}</div><div class="p-5 bg-gray-50 border-t-2 border-gray-100 flex justify-end"><button onclick="window.startGame()" class="bg-pink-500 text-white px-6 py-4 rounded-xl font-black text-lg shadow-lg hover:scale-105 flex items-center gap-3 w-full md:w-auto">Inizia la Pratica (${lesson.exercises.length} Es) <i data-lucide="play-circle" class="w-6 h-6"></i></button></div></div></div>`;
 };
 
 const renderGame = () => {
@@ -496,28 +495,21 @@ const renderGame = () => {
             let btnClass = isMatched ? 'bg-green-100 border-green-300 text-green-700 opacity-50 scale-95 cursor-default' : isSelected ? 'bg-pink-100 border-pink-500 text-pink-700 scale-[1.02] shadow-md' : 'bg-white border-gray-200 text-gray-700 shadow-sm hover:border-pink-300';
             return `<div onclick="window.handleMatchClick(${opt.id}, '${opt.type}', '${opt.text}')" class="word-chip p-3 md:p-4 rounded-xl border-2 font-black text-center min-h-[60px] flex items-center justify-center transition-all ${btnClass}">${opt.text}</div>`;
         }).join('');
-        exerciseHtml = `<div class="grid grid-cols-2 gap-4"><div class="flex flex-col gap-3 flex-1">${renderCol(koOptions)}</div><div class="flex flex-col gap-3 flex-1">${renderCol(itOptions)}</div></div>`;
+        exerciseHtml = `<div class="grid grid-cols-2 gap-4"><div class="matching-col">${renderCol(koOptions)}</div><div class="matching-col">${renderCol(itOptions)}</div></div>`;
     }
     // 4. Speak
     else if (exercise.type === 'speak') {
         if(state.fallbackActive && !isAnswered) {
-            exerciseHtml = `<div class="space-y-3 w-full animate-pop"><p class="text-xs font-bold text-orange-600 bg-orange-50 p-3 rounded-xl border border-orange-200 mb-4 flex items-start gap-2"><i data-lucide="info" class="w-4 h-4 mt-0.5"></i> Scegli la <b>pronuncia fonetica esatta</b>!</p>${state.fallbackOptions.map((opt, i) => `<button onclick="window.handleFallbackAnswer(${i})" class="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-pink-400 hover:bg-pink-50 font-black text-lg transition-all shadow-sm flex items-center justify-between min-h-[70px] outline-none"><span class="break-words mr-3">${opt}</span> <i data-lucide="ear" class="w-5 h-5 text-pink-400"></i></button>`).join('')}</div>`;
+            exerciseHtml = `<div class="space-y-3 w-full animate-pop"><p class="text-xs font-bold text-orange-600 bg-orange-50 p-3 rounded-xl border border-orange-200 mb-4 flex items-start gap-2"><i data-lucide="info" class="w-4 h-4 mt-0.5"></i> Scegli la <b>pronuncia fonetica esatta</b>!</p>${state.fallbackOptions.map((opt, i) => `<button onclick="window.handleFallbackAnswer(${i})" class="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-pink-400 hover:bg-pink-50 font-black text-lg transition-all shadow-sm flex items-center justify-between min-h-[70px]"><span class="break-words mr-3">${opt}</span> <i data-lucide="ear" class="w-5 h-5 text-pink-400"></i></button>`).join('')}</div>`;
         } else {
             const btnClasses = state.isRecording ? 'bg-pink-500 scale-110 shadow-2xl shadow-pink-500/50 recording-pulse border-white border-4' : isAnswered ? 'bg-gray-200 text-gray-400' : 'bg-blue-500 text-white shadow-xl hover:scale-105 border-4 border-blue-200';
             const msg = state.isRecording ? "Ti sto ascoltando..." : isAnswered ? "Analisi completata." : "Tocca per parlare";
-            exerciseHtml = `<div class="flex flex-col items-center justify-center mt-6 space-y-6 bg-gray-50 p-6 rounded-3xl border-2 border-dashed border-gray-200 min-h-[250px] relative"><button ${isAnswered || state.isRecording ? 'disabled' : ''} onmousedown="window.handleSpeechRecognition(event)" ontouchstart="window.handleSpeechRecognition(event)" class="relative w-32 h-32 rounded-full flex items-center justify-center transition-all ${btnClasses} no-select outline-none"><i data-lucide="mic" class="w-12 h-12 ${state.isRecording ? 'animate-bounce' : ''}"></i></button><p class="text-gray-600 font-black text-center text-lg">${msg}</p>${(!isAnswered && !state.isRecording) ? `<button onclick="window.triggerSpeechFallback()" class="absolute bottom-3 right-3 text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-3 py-2 rounded-lg outline-none">Salta</button>` : ''}</div>`;
+            exerciseHtml = `<div class="flex flex-col items-center justify-center mt-6 space-y-6 bg-gray-50 p-6 rounded-3xl border-2 border-dashed border-gray-200 min-h-[250px] relative"><button ${isAnswered || state.isRecording ? 'disabled' : ''} onmousedown="window.handleSpeechRecognition(event)" ontouchstart="window.handleSpeechRecognition(event)" class="relative w-32 h-32 rounded-full flex items-center justify-center transition-all ${btnClasses} no-select outline-none"><i data-lucide="mic" class="w-12 h-12 ${state.isRecording ? 'animate-bounce' : ''}"></i></button><p class="text-gray-600 font-black text-center text-lg">${msg}</p>${(!isAnswered && !state.isRecording) ? `<button onclick="window.triggerSpeechFallback()" class="absolute bottom-3 right-3 text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-3 py-2 rounded-lg">Salta</button>` : ''}</div>`;
         }
     }
 
-    const typeLabels = {
-        speak: { label: 'Pronuncia', icon: 'mic', classes: 'text-pink-700 bg-pink-50 border-pink-100' },
-        listen: { label: 'Ascolto', icon: 'headphones', classes: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
-        matching: { label: 'Coppie', icon: 'puzzle', classes: 'text-purple-700 bg-purple-50 border-purple-100' },
-        sentence_builder: { label: 'Costruzione', icon: 'blocks', classes: 'text-teal-700 bg-teal-50 border-teal-100' },
-        multiple_choice: { label: 'Quiz', icon: 'brain', classes: 'text-blue-700 bg-blue-50 border-blue-100' },
-        conversation: { label: 'Dialogo', icon: 'message-square', classes: 'text-orange-700 bg-orange-50 border-orange-100' }
-    };
-    const tData = typeLabels[exercise.type] || typeLabels.multiple_choice;
+    const typeLabels = { speak: ['Pronuncia', 'mic', 'pink'], listen: ['Ascolto', 'headphones', 'indigo'], matching: ['Coppie', 'puzzle', 'purple'], sentence_builder: ['Costruzione', 'blocks', 'teal'], multiple_choice: ['Quiz', 'brain', 'blue'], conversation: ['Dialogo', 'message-square', 'orange'] };
+    const [tLab, tIco, tCol] = typeLabels[exercise.type] || typeLabels.multiple_choice;
 
     return `
     <div class="max-w-2xl mx-auto animate-pop">
@@ -525,8 +517,8 @@ const renderGame = () => {
         <div class="mb-6 flex items-center gap-4 bg-white p-2 rounded-2xl shadow-sm border border-gray-100"><div class="flex-grow bg-gray-100 h-3 rounded-xl overflow-hidden shadow-inner"><div class="bg-gradient-to-r from-blue-400 to-pink-500 h-full transition-all duration-700" style="width: ${(state.gameStep / lesson.exercises.length) * 100}%"></div></div></div>
         <div class="bg-white rounded-[2rem] korean-shadow p-5 md:p-10 min-h-[450px] flex flex-col border border-blue-50 relative overflow-hidden">
           <div class="flex-grow z-10">
-            <div class="flex justify-center mb-6"><span class="${tData.classes} text-[10px] md:text-sm font-black px-4 py-1.5 rounded-full uppercase shadow-sm border flex items-center gap-2"><i data-lucide="${tData.icon}" class="w-4 h-4 shrink-0"></i> ${tData.label}</span></div>
-            ${exercise.type === 'listen' ? `<div class="flex justify-center mb-5"><button onclick="window.playAudio(event, '${exercise.audioHangul}')" class="flex items-center gap-3 bg-pink-500 text-white px-6 py-4 rounded-full hover:scale-105 shadow-xl shadow-pink-500/30 outline-none"><i data-lucide="volume-2" class="w-6 h-6 animate-pulse"></i><span class="font-black text-lg">Riproduci Audio</span></button></div>` : ''}
+            <div class="flex justify-center mb-6"><span class="text-${tCol}-700 bg-${tCol}-50 border-${tCol}-100 text-[10px] md:text-sm font-black px-4 py-1.5 rounded-full uppercase shadow-sm border flex items-center gap-2"><i data-lucide="${tIco}" class="w-4 h-4 shrink-0"></i> ${tLab}</span></div>
+            ${exercise.type === 'listen' ? `<div class="flex justify-center mb-5"><button onclick="window.playAudio(event, '${exercise.audioHangul}')" class="flex items-center gap-3 bg-pink-500 text-white px-6 py-4 rounded-full hover:scale-105 shadow-xl shadow-pink-500/30"><i data-lucide="volume-2" class="w-6 h-6 animate-pulse"></i><span class="font-black text-lg">Riproduci Audio</span></button></div>` : ''}
             ${exercise.context ? `<div class="mb-6 w-full flex justify-start"><div class="chat-bubble bg-orange-50 border-2 border-orange-200 p-4 rounded-2xl rounded-bl-none shadow-sm w-11/12"><p class="text-orange-900 font-bold text-sm md:text-lg">${exercise.context}</p></div></div>` : ''}
             <h2 class="text-xl md:text-3xl font-black text-gray-800 mb-6 text-center leading-snug">${exercise.question}</h2>
             ${exerciseHtml}
@@ -534,9 +526,9 @@ const renderGame = () => {
           <div class="mt-8 transition-all duration-500 z-10 ${isAnswered ? 'opacity-100 translate-y-0 block' : 'opacity-0 translate-y-4 hidden'}">
             <div class="p-5 rounded-2xl flex flex-col sm:flex-row gap-4 items-start shadow-sm border-2 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-rose-50 border-rose-200'}">
               <div class="p-3 rounded-full text-white shadow-md ${isCorrect ? 'bg-green-500' : 'bg-rose-500'}"><i data-lucide="${isCorrect ? 'check' : 'message-circle-warning'}" class="w-6 h-6"></i></div>
-              <div class="flex-grow"><h4 class="font-black text-xl mb-1 ${isCorrect ? 'text-green-900' : 'text-rose-900'}">${isCorrect ? 'Perfetto, Sara! 🎉' : 'Oops, non ti arrendere! 💪'}</h4><p class="font-bold text-sm text-gray-800">${isCorrect ? "Ottima risposta, vai avanti così." : (exercise.feedback_incorrect || "Riprova.")}</p>${!isCorrect && exercise.tip ? `<div class="bg-white/50 p-3 rounded-xl border border-white/40 mt-2 font-bold text-xs text-gray-700 shadow-inner"><strong>💡 Hint:</strong><br/>${exercise.tip}</div>` : ''}</div>
+              <div class="flex-grow"><h4 class="font-black text-xl mb-1">${isCorrect ? 'Perfetto, Sara! 🎉' : 'Oops, non ti arrendere! 💪'}</h4><p class="font-bold text-sm text-gray-800">${isCorrect ? "Ottima risposta, vai avanti così." : (exercise.feedback_incorrect || "Riprova.")}</p>${!isCorrect && exercise.tip ? `<div class="bg-white/50 p-3 rounded-xl border border-white/40 mt-2 font-bold text-xs text-gray-700 shadow-inner"><strong>💡 Hint del Sensei:</strong><br/>${exercise.tip}</div>` : ''}</div>
             </div>
-            <button onclick="window.nextQuestion()" class="w-full mt-4 py-4 rounded-xl font-black text-lg text-white shadow-xl hover:scale-[1.02] ${isCorrect ? 'bg-green-500 shadow-green-500/30' : 'bg-rose-500 shadow-rose-500/30'} outline-none">${state.gameStep === lesson.exercises.length - 1 ? 'Termina Lezione' : 'Prossima Domanda'}</button>
+            <button onclick="window.nextQuestion()" class="w-full mt-4 py-4 rounded-xl font-black text-lg text-white shadow-xl hover:scale-[1.02] ${isCorrect ? 'bg-green-500 shadow-green-500/30' : 'bg-rose-500 shadow-rose-500/30'}">${state.gameStep === lesson.exercises.length - 1 ? 'Termina Lezione' : 'Prossima Domanda'}</button>
           </div>
         </div>
     </div>`;
@@ -545,9 +537,7 @@ const renderGame = () => {
 const renderResult = () => {
     const lesson = window.COURSE_DATA.find(d => d.day === state.activeDay);
     const isPerfect = state.score === lesson.exercises.length;
-    const adminCode = window._s_k_d[state.activeDay];
-
-    return `<div class="max-w-lg mx-auto text-center px-4 animate-pop"><div class="bg-white rounded-3xl korean-shadow p-8 border border-blue-50 mt-4"><div class="w-24 h-24 bg-gradient-to-br from-yellow-300 to-orange-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl"><i data-lucide="trophy" class="w-12 h-12"></i></div><h2 class="text-3xl font-black text-gray-900 mb-2">Lezione Completata!</h2><p class="text-blue-500 mb-8 font-black uppercase text-xs">Giorno ${state.activeDay}</p><div class="text-[4rem] font-black text-pink-500 mb-6 drop-shadow-md">${state.score}<span class="text-3xl text-gray-400">/${lesson.exercises.length}</span></div>${state.newlyUnlockedLocation ? `<div class="bg-gradient-to-br from-pink-50 to-blue-50 border-2 border-pink-200 rounded-2xl p-5 mb-6 text-left"><p class="text-xs font-black text-pink-500 uppercase flex items-center gap-2 mb-2"><i data-lucide="map-pin" class="w-4 h-4"></i> Nuova Location Sbloccata!</p><div class="flex gap-4 items-center"><img src="${state.newlyUnlockedLocation.image}" class="w-20 h-16 object-cover rounded-xl border-2 border-pink-100 shadow-md" /><h3 class="font-black text-gray-900 text-base">${state.newlyUnlockedLocation.name}</h3></div><button onclick="window.changeView('explore')" class="mt-4 w-full bg-pink-500 text-white py-2.5 rounded-xl font-black text-sm outline-none">Esplora nel Korea Tour</button></div>` : ''}<p class="text-base font-bold text-gray-600 mb-6">${isPerfect ? "Sei stata IMPECCABILE! 🌸 화이팅! ✊" : "Ottimo sforzo! 화이팅! ✊"}</p><div class="bg-gray-100 p-3 rounded-xl mb-8 border border-gray-200 text-xs font-bold text-gray-600 text-left shadow-sm"><i data-lucide="key" class="w-4 h-4 inline text-pink-500 mb-0.5"></i> Codice Segreto: <span class="font-mono bg-white px-2 py-1 rounded shadow-sm text-pink-600 border border-pink-100">${adminCode}</span></div><button onclick="window.changeView('dashboard')" class="w-full bg-gray-900 text-white py-4 rounded-xl font-black text-lg shadow-xl hover:scale-[1.02] flex justify-center items-center gap-2 outline-none"><i data-lucide="map" class="w-6 h-6"></i> Torna al Percorso</button></div></div>`;
+    return `<div class="max-w-lg mx-auto text-center px-4 animate-pop"><div class="bg-white rounded-3xl korean-shadow p-8 border border-blue-50 mt-4"><div class="w-24 h-24 bg-gradient-to-br from-yellow-300 to-orange-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl"><i data-lucide="trophy" class="w-12 h-12"></i></div><h2 class="text-3xl font-black text-gray-900 mb-2">Lezione Completata!</h2><p class="text-blue-500 mb-8 font-black uppercase text-xs">Giorno ${state.activeDay}</p><div class="text-[4rem] font-black text-pink-500 mb-6 drop-shadow-md">${state.score}<span class="text-3xl text-gray-400">/${lesson.exercises.length}</span></div>${state.newlyUnlockedLocation ? `<div class="bg-gradient-to-br from-pink-50 to-blue-50 border-2 border-pink-200 rounded-2xl p-5 mb-6 text-left"><p class="text-xs font-black text-pink-500 uppercase flex items-center gap-2 mb-2"><i data-lucide="map-pin" class="w-4 h-4"></i> Nuova Location Sbloccata!</p><div class="flex gap-4 items-center"><img src="${state.newlyUnlockedLocation.image}" class="w-20 h-16 object-cover rounded-xl border-2 border-pink-100 shadow-md" /><h3 class="font-black text-gray-900 text-base">${state.newlyUnlockedLocation.name}</h3></div><button onclick="window.changeView('explore')" class="mt-4 w-full bg-pink-500 text-white py-2.5 rounded-xl font-black text-sm">Esplora nel Korea Tour</button></div>` : ''}<p class="text-base font-bold text-gray-600 mb-6">${isPerfect ? "Sei stata IMPECCABILE! 🌸 화이팅! ✊" : "Ottimo sforzo! 화이팅! ✊"}</p><button onclick="window.changeView('dashboard')" class="w-full bg-gray-900 text-white py-4 rounded-xl font-black text-lg shadow-xl hover:scale-[1.02] flex justify-center items-center gap-2"><i data-lucide="map" class="w-6 h-6"></i> Torna al Percorso</button></div></div>`;
 };
 
 const renderExplore = () => {
@@ -561,25 +551,16 @@ const renderExplore = () => {
 };
 
 const renderLibrary = () => {
-    let html = `<div class="max-w-5xl mx-auto animate-pop"><div class="bg-white p-6 rounded-[2rem] korean-shadow border mb-8 border-gray-100"><h2 class="text-2xl font-black text-gray-900 mb-2 flex items-center gap-2"><div class="p-2 bg-pink-100 text-pink-600 rounded-xl"><i data-lucide="bot" class="w-6 h-6"></i></div> Traduttore AI</h2><div class="flex flex-col md:flex-row gap-3"><input type="text" id="transInput" value="${state.transInput}" onchange="state.transInput = this.value" placeholder="es., Quanto costa?" class="flex-grow border-2 rounded-xl p-4 font-bold outline-none focus:border-pink-500" /><button onclick="window.runTranslation()" class="bg-pink-500 text-white px-6 py-4 rounded-xl font-black hover:scale-105 shadow-md flex items-center justify-center gap-2 outline-none"><i data-lucide="languages" class="w-5 h-5"></i> Traduci</button></div>
+    let html = `<div class="max-w-5xl mx-auto animate-pop"><div class="bg-white p-6 rounded-[2rem] korean-shadow border mb-8"><h2 class="text-2xl font-black text-gray-900 mb-2 flex items-center gap-2"><div class="p-2 bg-pink-100 text-pink-600 rounded-xl"><i data-lucide="bot" class="w-6 h-6"></i></div> Traduttore AI</h2><div class="flex flex-col md:flex-row gap-3"><input type="text" id="transInput" value="${state.transInput}" onchange="state.transInput = this.value" placeholder="es., Quanto costa?" class="flex-grow border-2 rounded-xl p-4 font-bold outline-none focus:border-pink-500" /><button onclick="window.runTranslation()" class="bg-pink-500 text-white px-6 py-4 rounded-xl font-black hover:scale-105 shadow-md flex items-center gap-2"><i data-lucide="languages" class="w-5 h-5"></i> Traduci</button></div>${state.transResult ? `<div class="mt-6 bg-gray-900 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-2xl"><div class="w-full"><span class="text-2xl font-black block mb-2 hangul-display text-white">${window.renderHangul(state.transResult)}</span><span class="text-sm font-bold text-blue-300 tracking-wide">${state.transRomaji}</span>
     
-    ${state.transResult ? `
-    <div class="mt-6 bg-gray-900 p-5 rounded-2xl flex flex-col md:flex-row justify-between md:items-center text-white gap-4 border border-gray-700 shadow-xl">
-        <div class="w-full">
-            <span class="text-2xl font-black block mb-2 hangul-display" style="font-family:'Noto Sans KR'">${window.renderHangul(state.transResult)}</span>
-            <span class="text-sm font-bold text-blue-300 mb-3 block">${state.transRomaji}</span>
-            <div class="bg-white/10 rounded-xl px-3 py-2 text-xs font-bold text-yellow-300 flex items-start gap-2 border border-white/10">
-                <span>📌</span>
-                <span>${state.transResult && (state.transResult.endsWith('요') || state.transResult.endsWith('다') || state.transResult.endsWith('까') || state.transResult.endsWith('세요')) ? '✅ Forma Formale (-요/-다) — Sicura da usare con sconosciuti e negozianti.' : '⚠️ Controlla il livello di formalità prima di usarla con sconosciuti!'}</span>
-            </div>
-        </div>
-        <button onclick="window.playAudio(event, '${state.transResult}')" class="bg-blue-500 text-white p-4 rounded-full hover:scale-110 shrink-0 outline-none flex justify-center"><i data-lucide="volume-2" class="w-6 h-6"></i></button>
-    </div>` : ''}
+    <div class="mt-3 bg-white/10 rounded-xl px-3 py-2 text-xs md:text-sm font-bold text-yellow-300 flex items-center gap-2">
+      <span>📌</span> 
+      <span>${state.transResult && (state.transResult.endsWith('요') || state.transResult.endsWith('다') || state.transResult.endsWith('까') || state.transResult.endsWith('세요')) ? '✅ Forma Formale (-요/-다) — Sicura da usare con sconosciuti e negozianti.' : '⚠️ Controlla il livello di formalità prima di usarla con sconosciuti!'}</span>
+    </div>
     
-    </div><div class="space-y-4">`;
-    
+    </div><button onclick="window.playAudio(event, '${state.transResult}')" class="bg-blue-500 text-white p-4 rounded-full hover:scale-110 shrink-0"><i data-lucide="volume-2" class="w-6 h-6"></i></button></div>` : ''}</div><div class="space-y-4">`;
     window.LIBRARY_DATA.forEach(section => {
-      let itemsHtml = section.items.map(item => `<div class="bg-white p-5 rounded-[1.2rem] shadow-sm border border-gray-50"><div class="flex justify-between items-start mb-3"><div class="w-full"><p class="text-xl font-black text-gray-900 mb-1 hangul-display">${window.renderHangul(item.hangul)}</p><p class="text-[10px] font-black text-blue-500 uppercase">${item.romaji}</p></div><button onclick="window.playAudio(event, '${item.hangul}')" class="bg-gray-50 p-2 rounded-full text-gray-700 outline-none"><i data-lucide="volume-2" class="w-5 h-5"></i></button></div><p class="font-black text-base mb-2">"${item.eng}"</p><p class="text-xs text-gray-500 bg-gray-50 p-3 rounded-xl font-bold">${item.context}</p></div>`).join('');
+      let itemsHtml = section.items.map(item => `<div class="bg-white p-5 rounded-[1.2rem] shadow-sm border border-gray-50"><div class="flex justify-between items-start mb-3"><div class="w-full"><p class="text-xl font-black text-gray-900 mb-1 hangul-display">${window.renderHangul(item.hangul)}</p><p class="text-[10px] font-black text-blue-500 uppercase">${item.romaji}</p></div><button onclick="window.playAudio(event, '${item.hangul}')" class="bg-gray-50 p-2 rounded-full text-gray-700"><i data-lucide="volume-2" class="w-5 h-5"></i></button></div><p class="font-black text-base mb-2">"${item.eng}"</p><p class="text-xs text-gray-500 bg-gray-50 p-3 rounded-xl font-bold">${item.context}</p></div>`).join('');
       html += `<details class="group bg-white rounded-2xl border-2 border-gray-100 shadow-sm overflow-hidden mb-4"><summary class="flex items-center justify-between p-5 cursor-pointer outline-none"><div class="flex items-center gap-3"><div class="p-2 bg-gray-100 rounded-xl group-open:bg-pink-100"><i data-lucide="${section.icon}" class="${section.iconColor} w-6 h-6"></i></div><h2 class="text-lg font-black text-gray-800">${section.category}</h2></div><div class="bg-gray-100 p-1.5 rounded-full text-gray-500 group-open:bg-pink-100 group-open:text-pink-500 group-open:rotate-180"><i data-lucide="chevron-down" class="w-5 h-5"></i></div></summary><div class="p-5 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50">${itemsHtml}</div></details>`;
     });
     return html + `</div></div>`;
@@ -594,37 +575,40 @@ const renderProfile = () => {
        else avan += 5;
     });
 
-    return `<div class="max-w-md mx-auto px-4 animate-pop"><div class="bg-white rounded-[2rem] korean-shadow p-6 border border-gray-100 text-center mt-4"><div class="w-24 h-24 bg-pink-50 text-pink-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl border-4 border-white"><i data-lucide="user" class="w-12 h-12"></i></div><h2 class="text-2xl font-black text-gray-900 mb-1">Profilo di Studio</h2><p class="text-gray-500 mb-2 font-bold text-sm">Il tuo viaggio in Corea è al sicuro qui.</p><div class="inline-flex items-center gap-2 bg-yellow-50 px-4 py-2 rounded-full mb-8 border border-yellow-200"><i data-lucide="zap" class="w-4 h-4 text-yellow-500"></i><span class="font-black text-yellow-700 text-sm">${getXPLevel(state.xp).title} — ${state.xp} XP</span></div>
+    return `<div class="max-w-md mx-auto px-4 animate-pop"><div class="bg-white rounded-[2rem] korean-shadow p-6 border text-center mt-4"><div class="w-24 h-24 bg-pink-50 text-pink-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl border-4 border-white"><i data-lucide="user" class="w-12 h-12"></i></div><h2 class="text-2xl font-black text-gray-900 mb-1">Profilo di Studio</h2><p class="text-gray-500 mb-2 font-bold text-sm">Il tuo viaggio in Corea è al sicuro qui.</p><div class="inline-flex items-center gap-2 bg-yellow-50 px-4 py-2 rounded-full mb-8"><i data-lucide="zap" class="w-4 h-4 text-yellow-500"></i><span class="font-black text-yellow-700 text-sm">${getXPLevel(state.xp).title} — ${state.xp} XP</span></div>
     
     <div class="text-left mb-6 bg-gray-50 p-5 rounded-2xl border border-gray-100">
-        <label class="block text-[10px] font-black text-gray-800 mb-4 uppercase flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-blue-500"></i> Competenze Apprese</label>
-        <div class="space-y-4">
-            <div><div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Basi & Saluti</span> <span>${Math.min(saluti, 100)}%</span></div><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-pink-500 h-1.5 rounded-full" style="width: ${Math.min(saluti, 100)}%"></div></div></div>
-            <div><div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Vita Quotidiana</span> <span>${Math.min(vita, 100)}%</span></div><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width: ${Math.min(vita, 100)}%"></div></div></div>
-            <div><div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Passioni & Hobby</span> <span>${Math.min(passioni, 100)}%</span></div><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-green-500 h-1.5 rounded-full" style="width: ${Math.min(passioni, 100)}%"></div></div></div>
-        </div>
+       <label class="block text-[10px] font-black text-gray-800 mb-3 uppercase flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-blue-500"></i> Competenze Apprese</label>
+       <div class="space-y-3">
+           <div><div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Basi & Saluti</span> <span>${Math.min(saluti, 100)}%</span></div><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-pink-500 h-1.5 rounded-full" style="width: ${Math.min(saluti, 100)}%"></div></div></div>
+           <div><div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Vita Quotidiana</span> <span>${Math.min(vita, 100)}%</span></div><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width: ${Math.min(vita, 100)}%"></div></div></div>
+           <div><div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Passioni & Hobby</span> <span>${Math.min(passioni, 100)}%</span></div><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-green-500 h-1.5 rounded-full" style="width: ${Math.min(passioni, 100)}%"></div></div></div>
+       </div>
     </div>
     
-    <div class="text-left mb-6 p-5 rounded-2xl border border-gray-100"><label class="block text-[10px] font-black text-gray-800 mb-2 uppercase">Grandezza Testo Coreano</label><div class="flex gap-4 items-center"><span class="text-xs font-black text-gray-400">가</span><input type="range" min="1" max="1.6" step="0.1" value="${state.hangulScale || 1}" onchange="window.updateHangulSize(this.value)" class="flex-grow" /><span class="text-xl font-black text-pink-500">가</span></div></div><div class="text-left mb-8 bg-pink-50 p-5 rounded-2xl border border-pink-100"><label class="block text-[10px] font-black text-pink-600 mb-2 uppercase">Codice Sblocco Admin</label><div class="flex gap-2"><input type="text" id="unlockCodeInput" placeholder="es. SR20K" class="w-full border-2 border-pink-200 rounded-xl p-3 font-bold uppercase outline-none focus:border-pink-500" /><button onclick="window.unlockDayWithCode(document.getElementById('unlockCodeInput').value)" class="bg-pink-500 text-white px-4 rounded-xl font-bold outline-none"><i data-lucide="arrow-right" class="w-5 h-5"></i></button></div></div>
+    <div class="text-left mb-6"><label class="block text-[10px] font-black text-gray-500 mb-2 uppercase">Nome Studente</label><input type="text" value="${state.profileName}" onchange="state.profileName = this.value; saveProgress(state.completedDays, state.mistakesRecord);" class="w-full border-2 rounded-xl p-4 text-xl font-black outline-none focus:border-pink-500 bg-gray-50 focus:bg-white" /></div><div class="text-left mb-6 p-5 rounded-2xl border"><label class="block text-[10px] font-black text-gray-800 mb-2 uppercase">Grandezza Testo</label><div class="flex gap-4 items-center"><span class="text-xs font-black text-gray-400">가</span><input type="range" min="1" max="1.6" step="0.1" value="${state.hangulScale || 1}" onchange="window.updateHangulSize(this.value)" class="flex-grow" /><span class="text-xl font-black text-pink-500">가</span></div></div><div class="text-left mb-8 bg-pink-50 p-5 rounded-2xl border border-pink-100"><label class="block text-[10px] font-black text-pink-600 mb-2 uppercase">Inserisci Codice Sblocco</label><div class="flex gap-2"><input type="text" id="unlockCodeInput" placeholder="es. SR20K" class="w-full border-2 border-pink-200 rounded-xl p-3 font-bold uppercase outline-none focus:border-pink-500" /><button onclick="window.unlockDayWithCode(document.getElementById('unlockCodeInput').value)" class="bg-pink-500 text-white px-4 rounded-xl font-bold"><i data-lucide="arrow-right" class="w-5 h-5"></i></button></div></div>
     
-    <div class="bg-gray-900 p-6 rounded-3xl mb-8 flex justify-between items-center text-left shadow-xl">
-        <div><p class="text-gray-400 text-[10px] font-black uppercase mb-1">Giorni Completati</p><p class="text-4xl font-black text-pink-400">${state.completedDays.length}</p></div>
-        <i data-lucide="award" class="text-yellow-400 w-12 h-12"></i>
+    <div class="bg-gray-900 p-6 rounded-2xl mb-8 flex justify-between items-center text-left shadow-xl">
+      <div>
+        <p class="text-gray-400 text-[10px] font-black uppercase mb-1">Giorni Completati</p>
+        <p class="text-4xl font-black text-pink-400">${state.completedDays.length}</p>
+      </div>
+      <i data-lucide="award" class="text-yellow-400 w-12 h-12"></i>
     </div>
     
-    <button onclick="if(confirm('Vuoi davvero azzerare i tuoi progressi? Perderai tutto!')) { localStorage.removeItem('sara_korean_save_v3'); state.completedDays = []; state.mistakesRecord = {}; saveProgress([], {}); renderApp(); }" class="w-full bg-white border-2 border-gray-200 hover:bg-red-50 hover:text-red-600 text-gray-500 py-4 rounded-xl font-black text-base shadow-sm flex justify-center items-center gap-2 outline-none"><i data-lucide="trash-2" class="w-5 h-5"></i> Resetta Percorso</button></div></div>`;
+    <button onclick="if(confirm('Vuoi davvero azzerare i tuoi progressi?')) { localStorage.removeItem('sara_korean_save_v3'); state.completedDays = []; state.mistakesRecord = {}; state.profileName = null; state.currentView = 'profile_select'; renderApp(); }" class="w-full bg-white border-2 border-gray-200 hover:bg-red-50 hover:text-red-600 text-gray-500 py-4 rounded-xl font-black text-base shadow-sm flex justify-center items-center gap-2"><i data-lucide="trash-2" class="w-5 h-5"></i> Resetta Percorso</button></div></div>`;
 };
 
 const renderApp = () => {
   const root = document.getElementById('root');
   
-  if (state.currentView === 'profile_select') {
+  if (state.currentView === 'profile_select' && !state.profileName) {
       root.innerHTML = renderProfileSelect();
       lucide.createIcons();
       return;
   }
 
-  let overlayHtml = state.isTransitioning ? `<div class="fixed inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm z-[10000] flex items-center justify-center animate-fadein"><div class="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-2xl flex flex-col items-center border border-gray-100 dark:border-gray-700"><i data-lucide="loader-2" class="animate-spin text-pink-500 w-12 h-12 mb-3"></i><span class="font-black text-gray-600 dark:text-gray-300 uppercase text-xs">Caricamento</span></div></div>` : '';
+  let overlayHtml = state.isTransitioning ? `<div class="fixed inset-0 bg-white/80 backdrop-blur-sm z-[10000] flex items-center justify-center animate-fadein"><div class="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center"><i data-lucide="loader-2" class="animate-spin text-pink-500 w-12 h-12 mb-3"></i><span class="font-black text-gray-600 uppercase text-xs">Caricamento</span></div></div>` : '';
   
   let content = '';
   if (state.currentView === 'dashboard') content = renderDashboard();
@@ -644,21 +628,6 @@ const renderApp = () => {
   lucide.createIcons();
   if (state.currentView === 'explore' && !state.isTransitioning) setTimeout(window.initMap, 50);
 };
-
-// --- START TIMER PAROLA DEL GIORNO ---
-setInterval(() => {
-    const timerEl = document.getElementById('wotd-timer');
-    if (timerEl) {
-        const now = new Date();
-        const midnight = new Date(now);
-        midnight.setHours(24, 0, 0, 0); // Prossima mezzanotte
-        const diff = midnight - now;
-        const h = String(Math.floor((diff / (1000 * 60 * 60)) % 24)).padStart(2, '0');
-        const m = String(Math.floor((diff / 1000 / 60) % 60)).padStart(2, '0');
-        const s = String(Math.floor((diff / 1000) % 60)).padStart(2, '0');
-        timerEl.innerText = `${h}:${m}:${s}`;
-    }
-}, 1000);
 
 // Boot App
 loadLocalProgress();
