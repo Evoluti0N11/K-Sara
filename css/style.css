@@ -17,9 +17,11 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {
+  height: 100%; /* Add this to strictly lock the viewport height */
+  overflow: hidden; /* Add this to prevent accidental body scrolling */
   overscroll-behavior-y: none;
   -webkit-overflow-scrolling: touch;
-  background-color: #fdfbf7;  /* light mode base */
+  background-color: #fdfbf7;
   color: #111827;
   font-family: 'Nunito', 'Noto Sans KR', sans-serif;
   margin: 0; padding: 0;
@@ -463,11 +465,10 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 #root {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  min-height: 100vh; /* fallback */
-  overflow-x: hidden;
+  height: 100dvh; /* Changed from min-height */
+  height: 100vh;  /* Changed from min-height */
+  overflow: hidden; /* Changed from overflow-x: hidden */
 }
-
 /* Main content area: scrolls independently */
 #main-content {
   flex: 1 1 auto;
