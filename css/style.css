@@ -17,6 +17,8 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {
+  height: 100%;
+  overflow: hidden;
   overscroll-behavior-y: none;
   -webkit-overflow-scrolling: touch;
   background-color: #fdfbf7;  /* light mode base */
@@ -463,9 +465,9 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 #root {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  min-height: 100vh; /* fallback */
-  overflow-x: hidden;
+  height: 100dvh;
+  height: 100vh; /* fallback */
+  overflow: hidden;
 }
 
 /* Main content area: scrolls independently */
