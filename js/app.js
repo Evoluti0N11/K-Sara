@@ -136,7 +136,7 @@ const startWotdTimer = () => {
 };
 
 /* ========= LOCALSTORAGE ========= */
-const SAVE_KEY = 'sara_korean_save_v4';
+const SAVE_KEY = 'sara_korean_save_v5';
 
 const saveProgress = () => {
   try {
@@ -148,6 +148,7 @@ const saveProgress = () => {
       mapUnlockSeen: state.mapUnlockSeen,
       isDarkMode: state.isDarkMode,
       unlockedBadges: state.unlockedBadges,
+      showHomepage: state.showHomepage,
       version: window.APP_VERSION
     }));
   } catch(e) { console.warn("Save error", e); }
@@ -168,10 +169,10 @@ const loadProgress = () => {
       state.mapUnlockSeen = data.mapUnlockSeen || [];
       state.isDarkMode = data.isDarkMode || false;
       state.unlockedBadges = data.unlockedBadges || [];
-      // Always show homepage on app start (don't restore from save)
+      state.showHomepage = data.showHomepage !== false;
     }
     // Check for old save keys and migrate
-    const oldKeys = ['sara_korean_save_v3', 'sara_korean_save_v2'];
+    const oldKeys = ['sara_korean_save_v4', 'sara_korean_save_v3', 'sara_korean_save_v2'];
     if (!raw) {
       for (const k of oldKeys) {
         const old = localStorage.getItem(k);
@@ -193,6 +194,71 @@ const loadProgress = () => {
 };
 
 /* ========= TOAST ========= */
+window.showUnlockModal = (region) => {
+  const existing = document.getElementById('unlock-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'unlock-modal';
+  modal.className = 'unlock-modal-overlay';
+  modal.innerHTML = `
+    <div class="unlock-modal-card" role="dialog" aria-modal="true" aria-label="Nuova location sbloccata">
+      <div class="unlock-modal-glow"></div>
+      <div class="text-6xl mb-3 animate-bounce">${region.icon}</div>
+      <p class="text-xs font-black uppercase tracking-widest text-white/60 mb-2">🗺️ Nuova Location Sbloccata!</p>
+      <h2 class="text-2xl font-black text-white mb-2 leading-tight">${region.name}</h2>
+      <div class="w-full rounded-2xl overflow-hidden mb-4 shadow-xl" style="height:160px">
+        <img src="${region.image}" alt="${region.name}" class="w-full h-full object-cover" 
+          onerror="this.style.display='none'" loading="lazy">
+      </div>
+      <p class="text-white/80 font-bold text-sm mb-4 leading-relaxed">${region.unlockMsg}</p>
+      ${region.phrases && region.phrases[0] ? `
+      <div class="bg-white/10 rounded-2xl p-3 mb-4 text-left">
+        <p class="text-[10px] font-black text-white/50 uppercase tracking-widest mb-2">🗣️ Frase del posto</p>
+        <p class="font-black text-white" style="font-family:'Noto Sans KR'">${region.phrases[0].hangul}</p>
+        <p class="text-blue-300 font-bold text-xs">${region.phrases[0].romaji}</p>
+        <p class="text-white/60 text-xs italic">"${region.phrases[0].eng}"</p>
+      </div>` : ''}
+      <button onclick="document.getElementById('unlock-modal').remove()" 
+        class="w-full bg-white text-pink-600 py-3 rounded-2xl font-black text-base shadow-xl hover:scale-105 transition-all outline-none">
+        ✨ Fantastico! Continua →
+      </button>
+    </div>`;
+
+  document.body.appendChild(modal);
+  // Confetti burst
+  if (window.confetti) {
+    confetti({ particleCount: 80, spread: 60, origin: { y: 0.5 }, colors: ['#f472b6', '#60a5fa', '#fbbf24', '#34d399'] });
+  }
+  // Auto-close after 12 seconds
+  setTimeout(() => { const m = document.getElementById('unlock-modal'); if (m) m.remove(); }, 12000);
+};
+
+window.showBadgeModal = (badge) => {
+  const existing = document.getElementById('badge-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'badge-modal';
+  modal.className = 'unlock-modal-overlay';
+  modal.innerHTML = `
+    <div class="unlock-modal-card" role="dialog" aria-modal="true">
+      <div class="unlock-modal-glow" style="background:radial-gradient(circle at 50% 0%, rgba(251,191,36,0.4), transparent 70%)"></div>
+      <div class="text-7xl mb-3 animate-bounce">${badge.icon}</div>
+      <p class="text-xs font-black uppercase tracking-widest text-white/60 mb-2">🏅 Badge Sbloccato!</p>
+      <h2 class="text-2xl font-black text-white mb-2">${badge.name}</h2>
+      <p class="text-white/70 font-bold text-sm mb-6">${badge.desc}</p>
+      <button onclick="document.getElementById('badge-modal').remove()"
+        class="w-full bg-white text-yellow-600 py-3 rounded-2xl font-black text-base shadow-xl hover:scale-105 transition-all outline-none">
+        🌟 Grazie! Avanti →
+      </button>
+    </div>`;
+  document.body.appendChild(modal);
+  if (window.confetti) {
+    confetti({ particleCount: 60, spread: 50, origin: { y: 0.5 }, colors: ['#fbbf24', '#f472b6', '#a78bfa'] });
+  }
+  setTimeout(() => { const m = document.getElementById('badge-modal'); if (m) m.remove(); }, 8000);
+};
+
 window.showToast = (msg, isError = false, isSuccess = false) => {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -365,6 +431,8 @@ window.startDay = (dayNum) => {
     state.fallbackActive = false; state.currentMistakes = [];
 	state.builderSelectedWords = [];
     state.builderAvailableWords = [];
+    state.textFillStep = 0;
+    state.textFillAnswers = [];
     state.isTransitioning = false;
     renderApp();
   }, 250);
@@ -508,16 +576,15 @@ window.nextQuestion = () => {
     // Check badges
     const newBadges = checkNewBadges();
     saveProgress();
-    markStudySession();
     state.currentView = 'result';
     state.isTransitioning = false;
     renderApp();
     if (newBadges.length > 0) {
       setTimeout(() => {
         newBadges.forEach((b, i) => {
-          setTimeout(() => window.showToast(`${b.icon} Badge sbloccato: ${b.name}!`, false, true), i * 1500);
+          setTimeout(() => window.showBadgeModal(b), i * 2000);
         });
-      }, 1000);
+      }, 1200);
     }
   } else {
     state.gameStep++;
@@ -526,6 +593,8 @@ window.nextQuestion = () => {
     state.fallbackActive = false;
 	state.builderSelectedWords = [];
     state.builderAvailableWords = [];
+    state.textFillStep = 0;
+    state.textFillAnswers = [];
     renderApp();
   }
 };
@@ -564,6 +633,7 @@ window.handleSwitchAccount = () => {
 window.enterApp = () => {
   state.showHomepage = false;
   state.currentView = 'dashboard';
+  saveProgress();
   renderApp();
 };
 
@@ -666,9 +736,7 @@ const renderApp = () => {
     lucide.createIcons(); return;
   }
 
-  if (state.currentView === 'home') {
-    // always render homepage normally
-  } else if (state.showHomepage) {
+  if (state.showHomepage && state.currentView !== 'home') {
     state.currentView = 'home';
   }
 
@@ -703,6 +771,7 @@ const renderApp = () => {
       <div class="max-w-5xl mx-auto px-4 py-2.5 flex justify-between items-center gap-4">
         <button onclick="window.changeView('dashboard')" class="font-black text-pink-500 flex items-center gap-2 outline-none hover:scale-105 transition-transform shrink-0">
           <span class="text-xl">🌸</span>
+          <span class="sm:hidden text-sm font-black text-pink-500">K-Sara</span>
           <span class="hidden sm:inline text-sm">Annyeong, ${state.profileName}!</span>
         </button>
 
@@ -730,6 +799,7 @@ const renderApp = () => {
     </header>`;
 
   root.innerHTML = `
+    <a href="#main-content" class="skip-to-content">Vai al contenuto</a>
     ${overlay}
     ${headerHtml}
     <main id="main-content" class="flex-1 overflow-y-auto overscroll-y-contain w-full hide-scroll" style="background-color: inherit;"
@@ -756,124 +826,68 @@ const renderApp = () => {
 };
 
 /* ========= HOMEPAGE ========= */
-const renderHome = () => {
-  const nextDay = (() => { for (let i = 1; i <= 45; i++) if (!state.completedDays.includes(i)) return i; return null; })();
-  const nextLesson = nextDay ? window.COURSE_DATA.find(d => d.day === nextDay) : null;
-  const totalProgress = Math.min((state.completedDays.length / 45) * 100, 100);
-  const notifStatus = ('Notification' in window) ? (localStorage.getItem('sara_korean_notif') || Notification.permission) : 'unsupported';
-  const isReturning = state.completedDays.length > 0;
-
-  // Last 3 completed days for display
-  const recentDays = [...state.completedDays].sort((a,b)=>b-a).slice(0,3);
-
-  const greetings = ['Annyeong! 🌸', 'Yeoboseyo! 📞', 'Waeosseo! 🇰🇷', 'Jal jinaeyo? 😊'];
-  const greeting = greetings[Math.floor(Date.now() / (1000 * 60 * 60 * 6)) % greetings.length];
-
-  return `
-  <div class="min-h-screen korea-pattern hero-gradient relative overflow-hidden flex flex-col items-center justify-center text-white px-4 py-8" style="min-height:100dvh;">
-    <!-- Background decorative hangul -->
-    <div class="absolute inset-0 overflow-hidden pointer-events-none select-none">
-      <div class="absolute top-8 left-4 text-8xl opacity-10 font-black" style="font-family:'Noto Sans KR'">한</div>
-      <div class="absolute bottom-12 right-4 text-8xl opacity-10 font-black" style="font-family:'Noto Sans KR'">국</div>
-      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[180px] opacity-5 font-black" style="font-family:'Noto Sans KR'">어</div>
+const renderHome = () => `
+  <div class="min-h-screen korea-pattern hero-gradient relative overflow-hidden flex flex-col items-center justify-center text-white p-6">
+    <!-- Background elements -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-10 left-5 text-8xl opacity-10 font-black" style="font-family:'Noto Sans KR'">한</div>
+      <div class="absolute bottom-10 right-5 text-8xl opacity-10 font-black" style="font-family:'Noto Sans KR'">국</div>
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[200px] opacity-5 font-black" style="font-family:'Noto Sans KR'">어</div>
     </div>
 
     <!-- Content -->
-    <div class="relative z-10 text-center w-full max-w-sm mx-auto animate-pop flex flex-col gap-5">
-
-      <!-- Avatar + greeting -->
-      <div>
-        <div class="avatar-ring w-24 h-24 mx-auto mb-3">
+    <div class="relative z-10 text-center max-w-sm mx-auto animate-pop">
+      <!-- Avatar -->
+      <div class="mb-6">
+        <div class="avatar-ring w-28 h-28 mx-auto">
           <div class="w-full h-full rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-5xl border-4 border-white/30">
             🌸
           </div>
         </div>
-        <p class="text-pink-200 text-xs font-black uppercase tracking-widest mb-1">${greeting}</p>
-        <h1 class="text-3xl font-black leading-tight">
-          ${isReturning ? 'Bentornata,' : 'Ciao,'} <span class="text-yellow-300">${state.profileName}</span>! 👋
-        </h1>
-        ${isReturning
-          ? `<p class="text-white/70 text-sm font-bold mt-1">Stai andando benissimo! Continua così 💪</p>`
-          : `<p class="text-white/70 text-sm font-bold mt-1">Il tuo percorso per parlare <span style="font-family:'Noto Sans KR'" class="font-black">한국어</span> in 45 giorni</p>`
-        }
       </div>
 
-      <!-- Stats grid — always live from localStorage -->
-      <div class="grid grid-cols-3 gap-2.5">
-        <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-3 text-center border border-white/20">
-          <div class="text-2xl font-black text-yellow-300">${state.completedDays.length}<span class="text-sm text-white/60">/45</span></div>
-          <div class="text-[10px] uppercase tracking-wider opacity-80 mt-0.5">Giorni</div>
+      <p class="text-pink-200 text-sm font-black uppercase tracking-widest mb-2">Annyeong!</p>
+      <h1 class="text-4xl font-black mb-2 leading-tight">Ciao, <span class="text-yellow-300">${state.profileName}</span>! 👋</h1>
+      <p class="text-white/80 font-bold mb-2">Il tuo percorso per parlare</p>
+      <div class="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full border border-white/30 mb-6">
+        <span style="font-family:'Noto Sans KR'" class="text-xl font-black">한국어</span>
+        <span class="text-white/70 text-sm">in 45 giorni</span>
+      </div>
+
+      <!-- Stats preview -->
+      <div class="flex gap-3 mb-8 justify-center">
+        <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-3 text-center border border-white/20 flex-1">
+          <div class="text-2xl font-black text-yellow-300">${state.completedDays.length}</div>
+          <div class="text-[10px] uppercase tracking-wider opacity-80">Giorni</div>
         </div>
-        <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-3 text-center border border-white/20">
-          <div class="text-2xl font-black text-orange-300">${state.streak} ${state.streak > 0 ? '🔥' : ''}</div>
-          <div class="text-[10px] uppercase tracking-wider opacity-80 mt-0.5">Streak</div>
+        <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-3 text-center border border-white/20 flex-1">
+          <div class="text-2xl font-black text-orange-300">${state.streak}</div>
+          <div class="text-[10px] uppercase tracking-wider opacity-80">Streak 🔥</div>
         </div>
-        <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-3 text-center border border-white/20">
+        <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-3 text-center border border-white/20 flex-1">
           <div class="text-2xl font-black text-green-300">${state.xp}</div>
-          <div class="text-[10px] uppercase tracking-wider opacity-80 mt-0.5">XP ⚡</div>
+          <div class="text-[10px] uppercase tracking-wider opacity-80">XP ⚡</div>
         </div>
       </div>
 
-      <!-- Progress bar -->
-      ${isReturning ? `
-      <div class="bg-white/10 rounded-2xl p-3 border border-white/20">
-        <div class="flex justify-between items-center mb-2">
-          <span class="text-xs font-black text-white/80">Progresso totale</span>
-          <span class="text-xs font-black text-yellow-300">${Math.round(totalProgress)}%</span>
-        </div>
-        <div class="w-full bg-white/20 h-2.5 rounded-full overflow-hidden">
-          <div class="bg-gradient-to-r from-yellow-300 to-pink-300 h-full rounded-full transition-all duration-1000" style="width:${totalProgress}%"></div>
-        </div>
-      </div>` : ''}
-
-      <!-- Next lesson preview -->
-      ${nextLesson ? `
-      <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-4 border border-white/20 text-left">
-        <p class="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1.5">Prossima Lezione</p>
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <p class="font-black text-base leading-tight">Giorno ${nextDay}: ${nextLesson.title}</p>
-            <p class="text-white/60 text-xs mt-0.5">${nextLesson.topic} • ~15 min</p>
-          </div>
-          <div class="shrink-0 bg-white/20 rounded-xl p-2 text-2xl">📚</div>
-        </div>
-      </div>` : `
-      <div class="bg-white/15 backdrop-blur-sm rounded-2xl p-4 border border-white/20 text-center">
-        <div class="text-3xl mb-1">🏆</div>
-        <p class="font-black text-base">Percorso Completato!</p>
-        <p class="text-white/60 text-xs mt-0.5">Sei una vera campionessa del coreano! 화이팅!</p>
-      </div>`}
-
-      <!-- Main CTA -->
-      <button onclick="window.enterApp()"
-        class="w-full bg-white text-pink-600 py-4 rounded-2xl font-black text-lg shadow-2xl shadow-black/20 active:scale-95 transition-transform flex items-center justify-center gap-3 outline-none touch-manipulation">
+      <!-- CTA -->
+      <button onclick="window.enterApp()" 
+        class="w-full bg-white text-pink-600 py-4 rounded-2xl font-black text-lg shadow-2xl shadow-black/20 hover:scale-105 transition-transform flex items-center justify-center gap-3 outline-none">
         ${state.completedDays.length > 0 ? '🚀 Continua il Percorso' : '🌸 Inizia il Percorso'}
         <i data-lucide="arrow-right" class="w-5 h-5"></i>
       </button>
 
-      <!-- Notification toggle -->
-      ${'Notification' in window ? `
-      <div class="flex items-center justify-center gap-2">
-        ${notifStatus === 'granted'
-          ? `<button onclick="window.disableNotifications()" class="flex items-center gap-2 bg-white/10 border border-white/20 text-white/70 px-4 py-2 rounded-full text-xs font-bold transition-all active:scale-95 outline-none touch-manipulation">
-              <i data-lucide="bell-off" class="w-3.5 h-3.5"></i> Notifiche attive — Disattiva
-            </button>`
-          : `<button onclick="window.requestNotificationPermission()" class="flex items-center gap-2 bg-white/15 border border-white/30 text-white px-4 py-2 rounded-full text-xs font-black transition-all active:scale-95 outline-none touch-manipulation">
-              <i data-lucide="bell" class="w-3.5 h-3.5 text-yellow-300"></i> Attiva Promemoria Studio
-            </button>`
-        }
-      </div>` : ''}
+      <p class="mt-4 text-white/50 text-xs">Personalizzato per te • Basato sulle tue passioni</p>
 
       <!-- Interest pills -->
-      <div class="flex flex-wrap gap-1.5 justify-center">
+      <div class="flex flex-wrap gap-2 justify-center mt-4">
         ${['💪 Gym', '🎮 LoL', '🎭 Cosplay', '📺 K-Drama', '🐾 Animali'].map(p =>
-          `<span class="bg-white/10 border border-white/20 text-white/80 px-3 py-1 rounded-full text-[11px] font-bold">${p}</span>`
+          `<span class="bg-white/10 border border-white/20 text-white/80 px-3 py-1 rounded-full text-xs font-bold">${p}</span>`
         ).join('')}
       </div>
-
     </div>
   </div>
-`;};
+`;
 
 /* ========= NAV ========= */
 const renderNav = () => {
@@ -1126,7 +1140,7 @@ const renderExplore = () => {
           <div class="location-card ${isUnlocked ? '' : 'locked'} ${region.isAnimal ? 'animal-location-card' : ''}">
             <div class="h-40 relative w-full overflow-hidden bg-gray-200 dark:bg-slate-700">
               ${isUnlocked
-                ? `<img src="${region.image}" alt="${region.name}" class="w-full h-full object-cover transition-transform duration-700 hover:scale-105" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1517154421773-0529f29ea451?w=400'" />`
+                ? `<img src="${region.image}" alt="${region.name}" class="w-full h-full object-cover transition-transform duration-700 hover:scale-105" loading="lazy" width="400" height="160" decoding="async" onerror="this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='flex')" />`
                 : `<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300 dark:from-slate-700 dark:to-slate-600"><i data-lucide="lock" class="w-10 h-10 text-gray-400 dark:text-slate-500"></i></div>`
               }
               <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
@@ -1310,7 +1324,7 @@ const renderTheory = () => {
             ${lesson.theory.examples.map(ex => `
               <div class="bg-white dark:bg-slate-750 border-2 border-gray-100 dark:border-slate-600 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm hover:shadow-md hover:border-pink-200 dark:hover:border-pink-700 transition-all group card-hover">
                 <div>
-                  <p class="text-xl md:text-2xl font-black text-gray-900 dark:text-white mb-1 group-hover:text-pink-600 transition-colors hangul-display">${window.renderHangul(ex.hangul)}</p>
+                  <p lang="ko" class="text-xl md:text-2xl font-black text-gray-900 dark:text-white mb-1 group-hover:text-pink-600 transition-colors hangul-display">${window.renderHangul(ex.hangul)}</p>
                   <p class="text-blue-500 font-bold text-sm mb-1">${ex.romaji}</p>
                   <p class="text-gray-700 dark:text-gray-300 font-black text-sm md:text-base mb-1">"${ex.eng}"</p>
                   ${ex.context ? `<p class="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-700 p-2 rounded-lg font-bold border border-gray-100 dark:border-slate-600 mt-1 inline-block">${ex.context}</p>` : ''}
@@ -1372,6 +1386,40 @@ window.handleBuilderClick = (index, fromPool) => {
   renderApp();
 };
 
+window.handleTextFillAnswer = (choiceIndex) => {
+  if (state.showFeedback) return;
+  window.haptic(15);
+  const lesson = window.COURSE_DATA.find(d => d.day === state.activeDay);
+  const ex = lesson.exercises[state.gameStep];
+  state.textFillAnswers = state.textFillAnswers || [];
+  state.textFillAnswers.push(choiceIndex);
+  if (state.textFillAnswers.length < (ex.blanks || []).length) {
+    state.textFillStep = (state.textFillStep || 0) + 1;
+  } else {
+    state.textFillStep = (ex.blanks || []).length; // trigger "Controlla" button
+  }
+  renderApp();
+};
+
+window.handleTextFillComplete = () => {
+  if (state.showFeedback) return;
+  const lesson = window.COURSE_DATA.find(d => d.day === state.activeDay);
+  const ex = lesson.exercises[state.gameStep];
+  const blanks = ex.blanks || [];
+  const allCorrect = blanks.every((b, bi) => state.textFillAnswers[bi] === b.answer);
+  state.selectedAnswer = allCorrect ? 'correct' : 'wrong';
+  state.showFeedback = true;
+  if (allCorrect) {
+    state.score++; state.combo++;
+    window.haptic([30, 50, 30]);
+  } else {
+    state.combo = 0;
+    state.currentMistakes.push(ex.conceptTag);
+    window.haptic(100);
+  }
+  renderApp();
+};
+
 window.checkBuilderAnswer = () => {
   if (state.showFeedback) return;
   const ex = window.COURSE_DATA.find(d => d.day === state.activeDay).exercises[state.gameStep];
@@ -1402,8 +1450,10 @@ const renderGame = () => {
   const isAnswered = state.selectedAnswer !== null;
 
   let isCorrect = false;
-  if (['multiple_choice', 'listen', 'conversation', 'fill_blank', 'sentence_builder'].includes(exercise.type)) {
+  if (['multiple_choice', 'listen', 'conversation', 'fill_blank', 'sentence_builder', 'dialogue'].includes(exercise.type)) {
     isCorrect = isAnswered && state.selectedAnswer === (exercise.type === 'sentence_builder' ? true : exercise.answer);
+  } else if (exercise.type === 'text_fill') {
+    isCorrect = isAnswered && state.selectedAnswer === 'correct';
   } else if (exercise.type === 'speak') {
     isCorrect = isAnswered && state.selectedAnswer === true;
   }
@@ -1415,7 +1465,9 @@ const renderGame = () => {
     listen: { label: 'Test di Ascolto', icon: 'headphones', color: 'text-indigo-700 bg-indigo-50 border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300' },
     conversation: { label: 'Simulazione Dialogo', icon: 'message-square', color: 'text-orange-700 bg-orange-50 border-orange-100 dark:bg-orange-900/30 dark:text-orange-300' },
     fill_blank: { label: 'Completa la Frase', icon: 'pencil', color: 'text-purple-700 bg-purple-50 border-purple-100 dark:bg-purple-900/30 dark:text-purple-300' },
-    sentence_builder: { label: 'Costruisci la Frase', icon: 'blocks', color: 'text-green-700 bg-green-50 border-green-100 dark:bg-green-900/30 dark:text-green-300' }
+    sentence_builder: { label: 'Costruisci la Frase', icon: 'blocks', color: 'text-green-700 bg-green-50 border-green-100 dark:bg-green-900/30 dark:text-green-300' },
+    dialogue: { label: 'Dialogo Reale', icon: 'messages-square', color: 'text-teal-700 bg-teal-50 border-teal-100 dark:bg-teal-900/30 dark:text-teal-300' },
+    text_fill: { label: 'Completa il Testo', icon: 'file-text', color: 'text-violet-700 bg-violet-50 border-violet-100 dark:bg-violet-900/30 dark:text-violet-300' }
   };
   const typeInfo = typeMap[exercise.type] || { label: 'Quiz', icon: 'brain', color: 'text-blue-700 bg-blue-50 border-blue-100 dark:bg-blue-900/30 dark:text-blue-300' };
 
@@ -1473,9 +1525,109 @@ const renderGame = () => {
       </div>
     `;
   } 
-  // === ALTRI ESERCIZI ===
+  // === DIALOGUE EXERCISE (giorni 35-45: costruisci un dialogo completo) ===
+  else if (exercise.type === 'dialogue') {
+    // dialogue: { lines: [{speaker, hangul, romaji, eng, isBlank}], blanks: ["risposta1",...], answer_indexes: [i,...] }
+    // User picks/types the missing line(s) from options
+    if (!exercise.options) {
+      exerciseHtml = `<p class="text-red-500 font-bold">Esercizio dialogo non configurato correttamente.</p>`;
+    } else {
+      exerciseHtml = `
+        <div class="space-y-4">
+          <div class="bg-gray-50 dark:bg-slate-750 rounded-2xl p-4 space-y-3 border border-gray-100 dark:border-slate-700">
+            ${(exercise.lines || []).map((line, li) => {
+              const isUser = line.isBlank;
+              if (isUser) {
+                const filled = isAnswered ? (state.selectedAnswer === exercise.answer
+                  ? `<span class="text-green-700 dark:text-green-300 font-black">${exercise.options[exercise.answer]}</span><span class="text-[10px] text-blue-500 font-bold block">${exercise.optionsRomaji ? exercise.optionsRomaji[exercise.answer] : ''}</span>`
+                  : `<span class="text-rose-600 dark:text-rose-300 font-black line-through">${exercise.options[state.selectedAnswer]}</span><span class="text-green-600 font-black block">${exercise.options[exercise.answer]}</span>`) : `<span class="text-pink-500 font-black italic">← Scegli la tua risposta qui sotto</span>`;
+                return `
+                  <div class="flex justify-end">
+                    <div class="bg-pink-100 dark:bg-pink-900/40 border-2 border-pink-300 dark:border-pink-700 rounded-2xl rounded-br-none px-4 py-3 max-w-[85%]">
+                      <p class="text-[10px] font-black text-pink-500 mb-1">🌸 Tu (Sara)</p>
+                      ${filled}
+                    </div>
+                  </div>`;
+              } else {
+                return `
+                  <div class="flex justify-start">
+                    <div class="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-2xl rounded-bl-none px-4 py-3 max-w-[85%] shadow-sm">
+                      <p class="text-[10px] font-black text-blue-500 mb-1">🇰🇷 ${line.speaker || 'Coreano'}</p>
+                      <p class="font-black text-gray-900 dark:text-gray-100 hangul-display" style="font-family:'Noto Sans KR'">${window.renderHangul(line.hangul)}</p>
+                      <p class="text-[11px] text-blue-500 font-bold">${line.romaji}</p>
+                      <p class="text-[11px] text-gray-500 dark:text-gray-400 italic">"${line.eng}"</p>
+                    </div>
+                  </div>`;
+              }
+            }).join('')}
+          </div>
+          ${!isAnswered ? `
+          <p class="text-xs font-black text-gray-500 dark:text-gray-400 text-center uppercase tracking-widest">Scegli la risposta giusta per completare il dialogo:</p>
+          <div class="space-y-2">
+            ${exercise.options.map((opt, i) => `
+              <div class="w-full rounded-2xl border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20 cursor-pointer transition-all p-4 shadow-sm"
+                   onclick="window.handleMultipleChoiceAnswer(${i})">
+                <p class="font-black text-gray-800 dark:text-gray-200 hangul-display" style="font-family:'Noto Sans KR'">${window.renderHangul(opt)}</p>
+                ${exercise.optionsRomaji && exercise.optionsRomaji[i] ? `<p class="text-[11px] text-blue-500 font-bold mt-0.5">${exercise.optionsRomaji[i]}</p>` : ''}
+              </div>`).join('')}
+          </div>` : ''}
+        </div>`;
+    }
+  }
+
+  // === TEXT_FILL EXERCISE (giorni 40-45: completa un testo con blanks) ===
+  else if (exercise.type === 'text_fill') {
+    // text_fill: { text_with_blanks: "안녕하세요! ___ 있어요?", blanks: [{options:[], answer:0, romaji:[]}, ...] }
+    // We render one blank at a time tracked by state.textFillStep
+    if (state.textFillStep === undefined) state.textFillStep = 0;
+    if (state.textFillAnswers === undefined) state.textFillAnswers = [];
+    const blanks = exercise.blanks || [];
+    const currentBlank = state.textFillStep < blanks.length ? blanks[state.textFillStep] : null;
+    const allDone = state.textFillStep >= blanks.length;
+
+    // Render text with filled/unfilled blanks
+    let textParts = exercise.text_with_blanks.split('___');
+    let renderedText = '';
+    textParts.forEach((part, pi) => {
+      renderedText += `<span class="text-gray-800 dark:text-gray-200" style="font-family:'Noto Sans KR'">${window.renderHangul(part)}</span>`;
+      if (pi < textParts.length - 1) {
+        if (pi < state.textFillAnswers.length) {
+          const ans = state.textFillAnswers[pi];
+          const b = blanks[pi];
+          renderedText += `<span class="inline-block bg-green-100 dark:bg-green-900/40 border-b-2 border-green-500 px-2 rounded font-black text-green-700 dark:text-green-300 hangul-display" style="font-family:'Noto Sans KR'">${b.options[ans]}</span>`;
+        } else if (pi === state.textFillStep) {
+          renderedText += `<span class="inline-block bg-pink-100 dark:bg-pink-900/30 border-b-2 border-pink-400 px-4 rounded text-pink-400 font-black">___</span>`;
+        } else {
+          renderedText += `<span class="inline-block bg-gray-100 dark:bg-slate-700 border-b-2 border-gray-300 px-4 rounded text-gray-400 font-black">___</span>`;
+        }
+      }
+    });
+
+    exerciseHtml = `
+      <div class="space-y-5">
+        <div class="bg-gray-50 dark:bg-slate-750 rounded-2xl p-5 border-2 border-gray-100 dark:border-slate-700 text-lg font-bold leading-relaxed">
+          ${renderedText}
+        </div>
+        ${exercise.text_romaji ? `<p class="text-[11px] text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800">📖 ${exercise.text_romaji}</p>` : ''}
+        ${!allDone && currentBlank && !isAnswered ? `
+          <p class="text-xs font-black text-gray-500 dark:text-gray-400 text-center uppercase tracking-widest">Blank ${state.textFillStep + 1} di ${blanks.length} — Scegli:</p>
+          <div class="space-y-2">
+            ${currentBlank.options.map((opt, i) => `
+              <div class="w-full rounded-2xl border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20 cursor-pointer transition-all p-4 shadow-sm"
+                   onclick="window.handleTextFillAnswer(${i})">
+                <p class="font-black text-gray-800 dark:text-gray-200 hangul-display" style="font-family:'Noto Sans KR'">${window.renderHangul(opt)}</p>
+                ${currentBlank.romaji && currentBlank.romaji[i] ? `<p class="text-[11px] text-blue-500 font-bold mt-0.5">${currentBlank.romaji[i]}</p>` : ''}
+              </div>`).join('')}
+          </div>` : ''}
+        ${allDone && !isAnswered ? `
+          <button onclick="window.handleTextFillComplete()" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg transition-all hover:scale-105 outline-none">
+            Controlla Testo Completo ✓
+          </button>` : ''}
+      </div>`;
+  }
+
+  // === ALTRI ESERCIZI (scelta multipla, ascolto, dialogo, fill_blank) ===
   else if (['multiple_choice', 'listen', 'conversation', 'fill_blank'].includes(exercise.type)) {
-    // (Stesso codice precedente per le scelte multiple...)
     exerciseHtml = `<div class="space-y-3">` + exercise.options.map((opt, i) => {
       let cls = "bg-white dark:bg-slate-750 border-2 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:border-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20";
       let iconHtml = '';
@@ -1491,24 +1643,54 @@ const renderGame = () => {
         }
       }
       const hasHangul = /[\u3131-\uD79D]/u.test(opt);
-      const audioBtn = (exercise.optionsHangul && exercise.optionsHangul[i]) ? `
-        <button onclick="window.playAudio(event,'${exercise.optionsHangul[i]}')" class="p-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 transition-colors shrink-0 border border-blue-100 dark:border-blue-800 mr-3 outline-none min-w-[44px] min-h-[44px] flex items-center justify-center">
+      // Always show Hangul + romaji together when optionsHangul available
+      const hangulText = exercise.optionsHangul && exercise.optionsHangul[i] ? exercise.optionsHangul[i] : '';
+      const audioBtn = hangulText ? `
+        <button onclick="window.playAudio(event,'${hangulText}')" class="p-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 transition-colors shrink-0 border border-blue-100 dark:border-blue-800 mr-3 outline-none min-w-[44px] min-h-[44px] flex items-center justify-center">
           <i data-lucide="volume-2" class="w-5 h-5"></i>
         </button>` : '';
+
+      // Build the label — three possible cases:
+      // A) optionsHangul[i] exists → show 한국어 big + romaji + italian label small
+      // B) opt itself is Hangul → render with hangul-display
+      // C) plain Italian text
+      const romajiText = exercise.optionsRomaji && exercise.optionsRomaji[i] ? exercise.optionsRomaji[i] : '';
+      let labelHtml = '';
+      if (hangulText) {
+        labelHtml = `
+          <div class="flex flex-col gap-0.5 flex-grow leading-tight min-w-0">
+            <span class="font-black text-base hangul-display truncate" lang="ko" style="font-family:'Noto Sans KR'">${window.renderHangul(hangulText)}</span>
+            ${romajiText ? `<span class="text-blue-500 font-bold text-[11px] truncate">${romajiText}</span>` : ''}
+            ${opt && opt !== hangulText ? `<span class="text-gray-500 dark:text-gray-400 font-bold text-[11px] italic truncate">${opt}</span>` : ''}
+          </div>`;
+      } else if (hasHangul) {
+        labelHtml = `<span class="font-black text-lg flex-grow leading-tight hangul-display">${window.renderHangul(opt)}</span>`;
+      } else {
+        labelHtml = `<span class="font-black text-base flex-grow leading-tight">${opt}</span>`;
+      }
+
       return `
-        <div class="relative w-full rounded-2xl transition-all cursor-pointer shadow-sm hover:shadow-md min-h-[68px] flex items-center ${cls}" onclick="if(!${isAnswered}) window.handleMultipleChoiceAnswer(${i})">
-          <div class="flex items-center w-full p-3 md:p-5 h-full">
+        <div class="relative w-full rounded-2xl transition-all cursor-pointer shadow-sm hover:shadow-md min-h-[72px] flex items-center ${cls}" onclick="if(!${isAnswered}) window.handleMultipleChoiceAnswer(${i})">
+          <div class="flex items-center w-full p-3 md:p-4 h-full gap-3">
             ${audioBtn}
-            <span class="font-black text-lg flex-grow leading-tight ${hasHangul ? 'hangul-display' : ''}">${hasHangul ? window.renderHangul(opt) : opt}</span>
-            <div class="flex items-center ml-2">${iconHtml}</div>
+            ${labelHtml}
+            <div class="flex items-center ml-2 shrink-0">${iconHtml}</div>
           </div>
         </div>`;
     }).join('') + '</div>';
   } else if (exercise.type === 'speak') {
-     // (Stesso codice precedente per lo speak...)
-     if (state.fallbackActive && !isAnswered) {
+    // Show target Hangul + romaji prominently (key improvement)
+    const targetHangul = exercise.expectedHangul && exercise.expectedHangul[0] ? exercise.expectedHangul[0] : '';
+    const targetRomaji = exercise.expectedRomaji && exercise.expectedRomaji[0] ? exercise.expectedRomaji[0] : '';
+    const targetDisplay = targetHangul ? `
+      <div class="w-full bg-white dark:bg-slate-700 border-2 border-blue-100 dark:border-blue-900 rounded-2xl px-4 py-3 text-center mb-2">
+        <p class="text-xl font-black text-gray-900 dark:text-white hangul-display" style="font-family:'Noto Sans KR'">${window.renderHangul(targetHangul)}</p>
+        <p class="text-blue-500 font-bold text-sm">${targetRomaji}</p>
+      </div>` : '';
+    if (state.fallbackActive && !isAnswered) {
       exerciseHtml = `
         <div class="space-y-3 w-full animate-pop">
+          ${targetDisplay}
           <p class="text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl border border-orange-200 dark:border-orange-800 flex items-start gap-2">
             <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5"></i> Scegli la <b>pronuncia fonetica esatta</b>!
           </p>
@@ -1524,15 +1706,16 @@ const renderGame = () => {
         : (isAnswered ? 'bg-gray-200 dark:bg-slate-700 text-gray-400' : 'bg-blue-500 hover:bg-blue-600 text-white shadow-xl hover:scale-105 border-4 border-blue-200');
       const msg = state.isRecording ? "Ti sto ascoltando... 👂" : (isAnswered ? "Analisi completata." : "Tocca per parlare");
       exerciseHtml = `
-        <div class="flex flex-col items-center justify-center mt-6 space-y-5 bg-gray-50 dark:bg-slate-750 p-6 rounded-3xl border-2 border-dashed border-gray-200 dark:border-slate-600 min-h-[240px] relative">
+        <div class="flex flex-col items-center justify-center mt-2 space-y-4 bg-gray-50 dark:bg-slate-750 p-6 rounded-3xl border-2 border-dashed border-gray-200 dark:border-slate-600 min-h-[260px] relative">
+          ${targetDisplay}
           <button ${isAnswered || state.isRecording ? 'disabled' : ''}
             onmousedown="window.handleSpeechRecognition(event)"
             ontouchstart="window.handleSpeechRecognition(event)"
-            class="relative w-28 h-28 rounded-full flex items-center justify-center transition-all ${btnCls} no-select outline-none"
+            class="relative w-24 h-24 rounded-full flex items-center justify-center transition-all ${btnCls} no-select outline-none"
             aria-label="Parla in coreano">
-            <i data-lucide="mic" class="w-12 h-12 ${state.isRecording ? 'animate-bounce' : ''}"></i>
+            <i data-lucide="mic" class="w-10 h-10 ${state.isRecording ? 'animate-bounce' : ''}"></i>
           </button>
-          <p class="text-gray-600 dark:text-gray-400 font-black text-center text-base">${msg}</p>
+          <p class="text-gray-600 dark:text-gray-400 font-black text-center text-sm">${msg}</p>
           ${(!isAnswered && !state.isRecording) ? `
             <button onclick="window.triggerSpeechFallback()" class="absolute bottom-3 right-3 text-[10px] font-bold text-gray-400 hover:text-gray-600 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-3 py-2 rounded-lg shadow-sm transition-colors outline-none">
               Alternativa
@@ -1581,13 +1764,18 @@ const renderGame = () => {
         </div>
 
         ${exercise.type === 'listen' ? `
-          <div class="flex justify-center mb-5">
+          <div class="flex flex-col items-center mb-5 gap-3">
             <button onclick="window.playAudio(event,'${exercise.audioHangul}')" 
               class="flex items-center gap-3 bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 rounded-full transition-all hover:scale-105 shadow-xl shadow-pink-500/30 outline-none"
-              aria-label="Riproduci audio">
+              aria-label="Riproduci la pronuncia coreana">
               <i data-lucide="volume-2" class="w-7 h-7 animate-pulse"></i>
               <span class="font-black text-lg">Riproduci Audio</span>
             </button>
+            ${isAnswered ? `
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-4 py-2 text-center">
+              <p class="font-black text-gray-900 dark:text-white hangul-display" style="font-family:'Noto Sans KR'">${exercise.audioHangul}</p>
+              ${exercise.audioRomaji ? `<p class="text-blue-500 font-bold text-xs">${exercise.audioRomaji}</p>` : ''}
+            </div>` : `<p class="text-xs font-bold text-gray-400 dark:text-gray-500">Ascolta con attenzione, poi scegli</p>`}
           </div>` : ''}
 
         ${contextHtml}
@@ -1639,6 +1827,18 @@ const renderResult = () => {
 
   const newUnlock = state.newlyUnlockedLocation;
 
+  // Show unlock as full-screen overlay after a short delay
+  if (newUnlock && !state.mapUnlockSeen.includes(newUnlock.name)) {
+    setTimeout(() => {
+      // Mark as seen so it doesn't re-show
+      if (!state.mapUnlockSeen.includes(newUnlock.name)) {
+        state.mapUnlockSeen.push(newUnlock.name);
+        saveProgress();
+      }
+      window.showUnlockModal(newUnlock);
+    }, 600);
+  }
+
   return `
   <div class="max-w-lg mx-auto animate-pop">
     <div class="bg-white dark:bg-slate-800 rounded-[2rem] korean-shadow p-8 md:p-10 text-center border border-blue-50 dark:border-slate-700 relative overflow-hidden">
@@ -1680,14 +1880,6 @@ const renderResult = () => {
           <p class="text-[10px] text-gray-500 font-bold uppercase">Score 🎯</p>
         </div>
       </div>
-
-      ${newUnlock ? `
-      <div class="bg-gradient-to-r from-green-400 to-blue-500 text-white p-4 rounded-2xl mb-5 shadow-lg animate-pop">
-        <p class="text-2xl mb-1">🗺️</p>
-        <p class="font-black text-lg">Nuova Location Sbloccata!</p>
-        <p class="text-white/80 font-bold text-sm">${newUnlock.icon} ${newUnlock.name}</p>
-        <p class="text-white/70 text-xs mt-1">${newUnlock.unlockMsg}</p>
-      </div>` : ''}
 
       ${state.currentMistakes.length > 0 ? `
       <div class="bg-rose-50 dark:bg-rose-900/20 border-2 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-300 p-4 rounded-2xl mb-5 text-left">
@@ -1787,113 +1979,18 @@ const renderProfile = () => {
       <button onclick="window.handleSwitchAccount()" class="w-full bg-white dark:bg-slate-750 border-2 border-gray-200 dark:border-slate-600 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300 hover:text-red-600 text-gray-500 dark:text-gray-400 py-3 rounded-2xl font-black text-sm transition-all flex justify-center items-center gap-2 outline-none">
         <i data-lucide="trash-2" class="w-5 h-5"></i> Resetta Percorso
       </button>
-
-      <!-- Notifications -->
-      ${'Notification' in window ? `
-      <div class="mt-4 bg-gray-50 dark:bg-slate-750 rounded-2xl p-4 border border-gray-100 dark:border-slate-700">
-        <p class="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <i data-lucide="bell" class="w-4 h-4 text-pink-500"></i> Promemoria Studio
-        </p>
-        ${(() => {
-          const ns = localStorage.getItem('sara_korean_notif') || Notification.permission;
-          if (ns === 'granted') return `
-            <p class="text-xs text-green-600 dark:text-green-400 font-bold mb-2">✅ Notifiche attive — ti ricordiamo ogni giorno</p>
-            <button onclick="window.disableNotifications()" class="w-full border-2 border-gray-200 dark:border-slate-600 text-gray-500 py-2 rounded-xl font-black text-xs transition-all hover:border-red-300 hover:text-red-500 outline-none">
-              Disattiva Notifiche
-            </button>`;
-          if (ns === 'denied') return `<p class="text-xs text-red-500 font-bold">Le notifiche sono bloccate. Abilita nelle impostazioni del browser.</p>`;
-          return `
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Ricevi un promemoria quando non studi per più di 23 ore</p>
-            <button onclick="window.requestNotificationPermission()" class="w-full bg-pink-500 text-white py-2.5 rounded-xl font-black text-sm transition-all hover:bg-pink-600 outline-none flex items-center justify-center gap-2">
-              <i data-lucide="bell" class="w-4 h-4"></i> Attiva Promemoria
-            </button>`;
-        })()}
-      </div>` : ''}
     </div>
   </div>`;
-};
-
-/* ========= NOTIFICATIONS ========= */
-const NOTIF_KEY = 'sara_korean_notif';
-
-window.requestNotificationPermission = async () => {
-  if (!('Notification' in window)) {
-    window.showToast("Notifiche non supportate da questo browser.", true);
-    return;
-  }
-  const permission = await Notification.requestPermission();
-  if (permission === 'granted') {
-    localStorage.setItem(NOTIF_KEY, 'granted');
-    scheduleStudyReminder();
-    window.showToast("✅ Notifiche attivate! Ti ricorderemo di studiare.", false, true);
-    renderApp();
-  } else {
-    window.showToast("Notifiche non autorizzate.", true);
-  }
-};
-
-window.disableNotifications = () => {
-  localStorage.setItem(NOTIF_KEY, 'denied');
-  if (window._notifTimeout) clearTimeout(window._notifTimeout);
-  window.showToast("Notifiche disattivate.", false, false);
-  renderApp();
-};
-
-const getNotifStatus = () => localStorage.getItem(NOTIF_KEY) || Notification.permission;
-
-const scheduleStudyReminder = () => {
-  if (!('Notification' in window) || getNotifStatus() !== 'granted') return;
-  if (window._notifTimeout) clearTimeout(window._notifTimeout);
-
-  // Check last study time
-  const lastStudy = parseInt(localStorage.getItem('sara_last_study') || '0');
-  const now = Date.now();
-  const hoursSince = (now - lastStudy) / (1000 * 60 * 60);
-
-  // Remind after 23h gap or schedule for next day
-  const msUntilReminder = hoursSince >= 23
-    ? 5000 // show in 5s if overdue
-    : Math.max(0, (23 * 60 * 60 * 1000) - (now - lastStudy));
-
-  window._notifTimeout = setTimeout(() => {
-    if (document.visibilityState !== 'visible') {
-      const messages = [
-        { title: "🌸 Annyeong Sara!", body: "Il tuo coreano ti aspetta! 15 minuti al giorno e tra poco parli con i coreani! 화이팅!" },
-        { title: "🔥 Streak in pericolo!", body: "Non perdere la tua serie! Studia oggi per mantenere il tuo streak! 💪" },
-        { title: "🎮 LoL in coreano?", body: "I player coreani ti stanno aspettando in chat. Studia ora!" },
-        { title: "📺 2521 ti chiama!", body: "Ogni lezione ti avvicina ai tuoi drama preferiti. Dai, 15 minuti!" },
-        { title: "💪 Gym time coreano!", body: "Impara le frasi della palestra oggi. Il tuo PT coreano ti ringrazierà!" }
-      ];
-      const msg = messages[Math.floor(Math.random() * messages.length)];
-      try {
-        new Notification(msg.title, {
-          body: msg.body,
-          icon: './icons/icon-192.png',
-          badge: './icons/icon-192.png',
-          tag: 'study-reminder',
-          requireInteraction: false
-        });
-      } catch(e) { console.warn('Notification error', e); }
-    }
-    // Reschedule for next day
-    scheduleStudyReminder();
-  }, msUntilReminder);
-};
-
-// Save last study time when completing a lesson
-const markStudySession = () => {
-  localStorage.setItem('sara_last_study', Date.now().toString());
-  scheduleStudyReminder();
 };
 
 /* ========= BOOT ========= */
 const initApp = () => {
   loadProgress();
-  // Always show homepage on app open — stats are live from state
-  state.showHomepage = true;
-  state.currentView = 'home';
+  if (state.completedDays.length > 0 || !state.showHomepage) {
+    state.showHomepage = false;
+    state.currentView = 'dashboard';
+  }
   renderApp();
-
   // Register SW
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -1901,11 +1998,6 @@ const initApp = () => {
         .then(r => console.log('SW registered:', r.scope))
         .catch(e => console.warn('SW error:', e));
     });
-  }
-
-  // Resume notification scheduling if already granted
-  if (getNotifStatus() === 'granted') {
-    scheduleStudyReminder();
   }
 };
 
